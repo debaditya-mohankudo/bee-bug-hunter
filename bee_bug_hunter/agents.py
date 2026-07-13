@@ -15,14 +15,24 @@ from bee_bug_hunter.tools.mysql_tool import MySQLQueryTool
 from bee_bug_hunter.tools.playwright_tool import PlaywrightFlowTool
 
 
-def build_agents(docker_host: str | None = None, mysql_cfg: dict | None = None) -> dict:
+def build_agents(
+    docker_host: str | None = None, mysql_cfg: dict | None = None,
+    flow_name: str = "default", containers: str = "",
+) -> dict:
     """docker_host/mysql_cfg are per-flow overrides from flows_manifest.yaml (see
-    that file's comments): None means "use the .env default for everything"."""
-    llm = get_chat_model()
+    that file's comments): None means "use the .env default for everything".
+    flow_name/containers are only meaningful for claude_cli (its per-flow root+
+    per-role fork session topology, see claude_cli_llm.py); every other provider
+    ignores them."""
+    # A separate get_chat_model(role=...) call per worker rather than one shared llm:
+    # for claude_cli this gives each role its own session singleton (see llm.py),
+    # keeping workers isolated from each other instead of bleeding into one shared
+    # Claude session. Other providers ignore `role` and just construct fresh each
+    # call, same as before.
     mysql_cfg = mysql_cfg or {}
 
     flow_runner = RequirementAgent(
-        llm=llm,
+        llm=get_chat_model(role="API Flow Runner", flow_name=flow_name, containers=containers),
         name="API Flow Runner",
         description=(
             "Executes the target flow -- via Playwright for UI flows, or via a registered "
@@ -43,7 +53,7 @@ def build_agents(docker_host: str | None = None, mysql_cfg: dict | None = None) 
     )
 
     log_capturer = RequirementAgent(
-        llm=llm,
+        llm=get_chat_model(role="Docker Log Capturer", flow_name=flow_name, containers=containers),
         name="Docker Log Capturer",
         description="Captures container logs for the exact window the flow ran in, so downstream analysis has full context.",
         role="Docker Log Capturer",
@@ -57,7 +67,7 @@ def build_agents(docker_host: str | None = None, mysql_cfg: dict | None = None) 
     )
 
     db_query_agent = RequirementAgent(
-        llm=llm,
+        llm=get_chat_model(role="DB Query Agent", flow_name=flow_name, containers=containers),
         name="DB Query Agent",
         description="Finds SQL statements referenced in logs and re-runs equivalent read-only queries to inspect actual data state.",
         role="DB Query Agent",
@@ -72,7 +82,7 @@ def build_agents(docker_host: str | None = None, mysql_cfg: dict | None = None) 
 
     anomaly_check_tool = AnomalyCheckTool()
     bug_analyzer = RequirementAgent(
-        llm=llm,
+        llm=get_chat_model(role="Bug Analyst", flow_name=flow_name, containers=containers),
         name="Bug Analyst",
         description="Synthesizes the flow result, captured logs, and DB query output into a root-cause bug analysis.",
         role="Bug Analyst",
@@ -88,7 +98,7 @@ def build_agents(docker_host: str | None = None, mysql_cfg: dict | None = None) 
     )
 
     sql_performance_agent = RequirementAgent(
-        llm=llm,
+        llm=get_chat_model(role="SQL Performance Agent", flow_name=flow_name, containers=containers),
         name="SQL Performance Agent",
         description="Investigates slow queries flagged during a flow run and recommends concrete performance fixes.",
         role="SQL Performance Agent",

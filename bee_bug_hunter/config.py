@@ -14,6 +14,7 @@ LLM_MODEL_ENV_VAR = {
     "ollama": "OLLAMA_MODEL",
     "openai": "OPENAI_MODEL",
     "anthropic": "ANTHROPIC_MODEL",
+    "claude_cli": "CLAUDE_CLI_MODEL",
 }
 
 DEFAULT_LLM_PROVIDER = "ollama"
@@ -28,9 +29,15 @@ DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434"
 DEFAULT_OLLAMA_NUM_CTX = 16384
 DEFAULT_OPENAI_MODEL = "gpt-4o"
 DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-5"
+DEFAULT_CLAUDE_CLI_MODEL = "sonnet"
 
 DEFAULT_LOG_FILE = "logs/bee_bug_hunter.jsonl"
 DEFAULT_LOG_LEVEL = "INFO"
+
+# claude_cli only: where role -> claude -p session_id is persisted (see
+# claude_cli_llm.py's ClaudeCLIChatModel.for_role()), so a session survives process
+# restarts instead of living only in an in-memory dict that resets every run.
+DEFAULT_CLAUDE_CLI_SESSION_STORE = ".claude_cli_sessions.json"
 
 # Where run_flow_once() writes one markdown report per flow run (see reports.py).
 DEFAULT_REPORTS_DIR = "reports"

@@ -4,4 +4,5 @@ __pycache__/
 logs/
 reports/
 .captures/
+.claude_cli_sessions.json
 .DS_Store

@@ -3,8 +3,10 @@ import os
 
 from beeai_framework.backend import ChatModel
 
+from bee_bug_hunter.claude_cli_llm import ClaudeCLIChatModel
 from bee_bug_hunter.config import (
     DEFAULT_ANTHROPIC_MODEL,
+    DEFAULT_CLAUDE_CLI_MODEL,
     DEFAULT_LLM_PROVIDER,
     DEFAULT_OLLAMA_BASE_URL,
     DEFAULT_OLLAMA_MODEL,
@@ -25,9 +27,22 @@ from bee_bug_hunter.config import (
 _SEQUENTIAL_TOOL_CALLS = {"allow_parallel_tool_calls": False}
 
 
-def get_chat_model() -> ChatModel:
+def get_chat_model(role: str | None = None, flow_name: str = "default", containers: str = "") -> ChatModel:
+    """role/flow_name/containers scope claude_cli's per-(flow, role) session
+    singleton (e.g. flow_name="example_login_api", role="Bug Analyst") -- see
+    ClaudeCLIChatModel.for_role(). Ignored by every other provider, which just
+    construct fresh each call as before."""
     provider = os.getenv("LLM_PROVIDER", DEFAULT_LLM_PROVIDER).lower()
 
+    if provider == "claude_cli":
+        # Belt-and-suspenders: ClaudeCLIChatModel's own _create() only ever parses one
+        # {"tool": ...} JSON object per CLI call, so it's structurally incapable of
+        # emitting >1 tool call per turn regardless of this flag -- set for consistency
+        # with the other providers, not because this backend actually needs it.
+        return ClaudeCLIChatModel.for_role(
+            role, model=os.getenv("CLAUDE_CLI_MODEL", DEFAULT_CLAUDE_CLI_MODEL),
+            flow_name=flow_name, containers=containers, **_SEQUENTIAL_TOOL_CALLS,
+        )
     if provider == "ollama":
         from beeai_framework.adapters.ollama.backend.chat import OllamaChatModel
 

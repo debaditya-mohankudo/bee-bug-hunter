@@ -27,7 +27,9 @@ def build_supervisor(
     Flow Runner tool the manager is told to have the worker use: 'ui' (default)
     drives flows/<flow_name>.yaml via Playwright; 'api' calls a registered
     bee_bug_hunter/api_flows.py function (api_flow_name) via requests instead."""
-    workers = build_agents(docker_host=docker_host, mysql_cfg=mysql_cfg)
+    workers = build_agents(
+        docker_host=docker_host, mysql_cfg=mysql_cfg, flow_name=flow_name, containers=containers,
+    )
 
     handoffs = {
         key: CapturingHandoffTool(
@@ -49,7 +51,7 @@ def build_supervisor(
     ]
 
     supervisor = RequirementAgent(
-        llm=get_chat_model(),
+        llm=get_chat_model(role="Investigation Manager", flow_name=flow_name, containers=containers),
         name="Investigation Manager",
         description=(
             "Runs the flow, captures its logs and DB state, decides whether anything is wrong, and if so "
