@@ -4,6 +4,7 @@ tools at all — only HandoffTools targeting these workers, which structurally
 enforces the 'manager only delegates' rule the CrewAI version needed a
 hierarchical-process gotcha workaround for."""
 from beeai_framework.agents.requirement import RequirementAgent
+from beeai_framework.agents.requirement.requirements.conditional import ConditionalRequirement
 
 from bee_bug_hunter.llm import get_chat_model
 from bee_bug_hunter.logging_memory import LoggingMemory
@@ -69,6 +70,7 @@ def build_agents(docker_host: str | None = None, mysql_cfg: dict | None = None) 
         memory=LoggingMemory(agent_name="DB Query Agent"),
     )
 
+    anomaly_check_tool = AnomalyCheckTool()
     bug_analyzer = RequirementAgent(
         llm=llm,
         name="Bug Analyst",
@@ -77,10 +79,11 @@ def build_agents(docker_host: str | None = None, mysql_cfg: dict | None = None) 
         instructions=(
             "You are a senior engineer who reads flow execution results, container logs, and database "
             "query output together, and produces a precise, evidence-backed root-cause analysis with a "
-            "concrete recommended fix — not vague speculation. You may use check_anomalies as a quick "
-            "heuristic first pass over raw flow/log output, but you make the final call yourself."
+            "concrete recommended fix — not vague speculation. You must use check_anomalies as a quick "
+            "heuristic first pass over raw flow/log output before you make the final call yourself."
         ),
-        tools=[AnomalyCheckTool()],
+        tools=[anomaly_check_tool],
+        requirements=[ConditionalRequirement(anomaly_check_tool, force_at_step=1)],
         memory=LoggingMemory(agent_name="Bug Analyst"),
     )
 

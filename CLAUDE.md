@@ -11,7 +11,10 @@ playwright install chromium
 cp .env.example .env  # fill in LLM_PROVIDER, MySQL creds, etc.
 ```
 
-No test suite exists yet.
+```bash
+pip install -r requirements-dev.txt
+python -m pytest tests/                          # unit tests (no LLM/docker needed)
+```
 
 ## Running
 

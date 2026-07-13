@@ -5,6 +5,7 @@ escalation itself; handoffs propagate the conversation so far to each worker
 (cross-delegation context comes free from HandoffTool's memory propagation,
 replacing CrewAI's Crew(memory=True) embedder setup)."""
 from beeai_framework.agents.requirement import RequirementAgent
+from beeai_framework.agents.requirement.requirements.conditional import ConditionalRequirement
 
 from bee_bug_hunter.agents import build_agents
 from bee_bug_hunter.config import DEFAULT_FLOW_KIND
@@ -28,13 +29,23 @@ def build_supervisor(
     bee_bug_hunter/api_flows.py function (api_flow_name) via requests instead."""
     workers = build_agents(docker_host=docker_host, mysql_cfg=mysql_cfg)
 
-    handoffs = [
-        CapturingHandoffTool(
+    handoffs = {
+        key: CapturingHandoffTool(
             worker,
             role=worker.meta.name,
             description=f"Delegate a task to the {worker.meta.name}: {worker.meta.description}",
         )
-        for worker in workers.values()
+        for key, worker in workers.items()
+    }
+
+    # Structural ordering guarantee, replacing "trust the prompt": the Bug Analyst,
+    # SQL Performance Agent, and DB Query Agent must not be delegated to until the
+    # Docker Log Capturer has actually run, since they're each handed "the logs
+    # from step 2" that would otherwise not exist yet.
+    requirements = [
+        ConditionalRequirement(handoffs["db_query_agent"], only_after=handoffs["log_capturer"]),
+        ConditionalRequirement(handoffs["bug_analyzer"], only_after=handoffs["log_capturer"]),
+        ConditionalRequirement(handoffs["sql_performance_agent"], only_after=handoffs["log_capturer"]),
     ]
 
     supervisor = RequirementAgent(
@@ -52,7 +63,8 @@ def build_supervisor(
             "worker's real delegated output. If nothing looks wrong, say so plainly instead of "
             "manufacturing a finding."
         ),
-        tools=handoffs,
+        tools=list(handoffs.values()),
+        requirements=requirements,
         memory=LoggingMemory(agent_name="Investigation Manager"),
     )
 
