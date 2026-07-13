@@ -61,3 +61,4 @@ nonexistent `passwd` column causing every login to 500, and an N+1 query on
 cd demo_app && docker compose up --build -d
 cd .. && python -m bee_bug_hunter.main --once
 ```
+
