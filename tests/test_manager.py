@@ -31,7 +31,7 @@ def supervisor():
 
 
 def test_supervisor_has_no_domain_tools_only_handoffs(supervisor):
-    assert len(supervisor._tools) == 5
+    assert len(supervisor._tools) == 6
     assert all(isinstance(t, CapturingHandoffTool) for t in supervisor._tools)
 
 
@@ -43,11 +43,12 @@ def test_supervisor_handoff_names(supervisor):
         "db_query_agent",
         "bug_analyst",
         "sql_performance_agent",
+        "source_code_analyst",
     }
 
 
-def test_supervisor_has_three_ordering_requirements(supervisor):
-    assert len(supervisor._requirements) == 3
+def test_supervisor_has_four_ordering_requirements(supervisor):
+    assert len(supervisor._requirements) == 4
 
 
 def test_prompt_lists_steps_in_order():
@@ -71,7 +72,9 @@ def test_ui_flow_kind_selects_run_playwright_flow_tool():
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("handoff_name", ["db_query_agent", "bug_analyst", "sql_performance_agent"])
+@pytest.mark.parametrize(
+    "handoff_name", ["db_query_agent", "bug_analyst", "sql_performance_agent", "source_code_analyst"]
+)
 async def test_handoff_blocked_until_log_capturer_ran(supervisor, handoff_name):
     tools = list(supervisor._tools)
     for requirement in supervisor._requirements:

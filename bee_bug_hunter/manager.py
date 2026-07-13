@@ -48,6 +48,7 @@ def build_supervisor(
         ConditionalRequirement(handoffs["db_query_agent"], only_after=handoffs["log_capturer"]),
         ConditionalRequirement(handoffs["bug_analyzer"], only_after=handoffs["log_capturer"]),
         ConditionalRequirement(handoffs["sql_performance_agent"], only_after=handoffs["log_capturer"]),
+        ConditionalRequirement(handoffs["source_code_analyst"], only_after=handoffs["log_capturer"]),
     ]
 
     supervisor = RequirementAgent(
@@ -92,7 +93,11 @@ def build_supervisor(
         "4. From the real evidence gathered in steps 1-3, decide whether anything is wrong "
         "(functional failure and/or slow query). If so, hand off to 'Bug Analyst' and/or "
         "'SQL Performance Agent' as appropriate, passing them the real evidence you gathered. "
-        "If the run is clean, report that plainly instead of inventing a finding.\n\n"
+        "If the run is clean, report that plainly instead of inventing a finding.\n"
+        "5. If 'Bug Analyst' or 'SQL Performance Agent' formed a specific hypothesis (e.g. a "
+        f"suspected column name or query pattern), hand off to 'Source Code Analyst' with the "
+        f"relevant container name from [{containers}] and the hypothesis, so it can confirm or "
+        "refute it against the real source before you finalize the report.\n\n"
         "Final answer: a markdown report — run summary, whether any issue was found, and (if so) "
         "the specialist findings and recommended fix. If clean, a short statement saying so."
     )

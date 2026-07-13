@@ -13,6 +13,7 @@ from bee_bug_hunter.tools.api_request_tool import ApiRequestFlowTool
 from bee_bug_hunter.tools.docker_log_tool import DockerLogCaptureTool
 from bee_bug_hunter.tools.mysql_tool import MySQLQueryTool
 from bee_bug_hunter.tools.playwright_tool import PlaywrightFlowTool
+from bee_bug_hunter.tools.read_source_tool import ReadSourceFileTool
 
 
 def build_agents(
@@ -112,12 +113,28 @@ def build_agents(
         memory=LoggingMemory(agent_name="SQL Performance Agent"),
     )
 
+    source_code_analyst = RequirementAgent(
+        llm=get_chat_model(role="Source Code Analyst", flow_name=flow_name, containers=containers),
+        name="Source Code Analyst",
+        description="Reads the app's own source code (copied out of its container) to confirm a hypothesis against the real implementation.",
+        role="Source Code Analyst",
+        instructions=(
+            "You confirm or refute a suspected root cause by reading the application's actual source "
+            "code with read_source_file — e.g. checking the exact column name in a SQL query, or the "
+            "exact loop shape behind a suspected N+1 pattern — rather than relying only on log/DB "
+            "evidence. Quote the specific line(s) that confirm or refute the hypothesis in your answer."
+        ),
+        tools=[ReadSourceFileTool(docker_host=docker_host)],
+        memory=LoggingMemory(agent_name="Source Code Analyst"),
+    )
+
     return {
         "flow_runner": flow_runner,
         "log_capturer": log_capturer,
         "db_query_agent": db_query_agent,
         "bug_analyzer": bug_analyzer,
         "sql_performance_agent": sql_performance_agent,
+        "source_code_analyst": source_code_analyst,
     }
 
 
@@ -147,6 +164,10 @@ AGENT_SUMMARIES: list[dict[str, str]] = [
     {
         "role": "SQL Performance Agent",
         "goal": "Runs EXPLAIN on slow queries and recommends a concrete index/query/caching fix.",
+    },
+    {
+        "role": "Source Code Analyst",
+        "goal": "Reads the app's own source (copied out of its container) to confirm a hypothesis against the real implementation.",
     },
 ]
 

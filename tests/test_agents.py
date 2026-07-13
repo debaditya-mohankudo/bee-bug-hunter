@@ -13,6 +13,7 @@ from bee_bug_hunter.tools.api_request_tool import ApiRequestFlowTool
 from bee_bug_hunter.tools.docker_log_tool import DockerLogCaptureTool
 from bee_bug_hunter.tools.mysql_tool import MySQLQueryTool
 from bee_bug_hunter.tools.playwright_tool import PlaywrightFlowTool
+from bee_bug_hunter.tools.read_source_tool import ReadSourceFileTool
 
 
 def _empty_state() -> RequirementAgentRunState:
@@ -24,13 +25,14 @@ def workers():
     return build_agents()
 
 
-def test_build_agents_returns_all_five_workers(workers):
+def test_build_agents_returns_all_six_workers(workers):
     assert set(workers) == {
         "flow_runner",
         "log_capturer",
         "db_query_agent",
         "bug_analyzer",
         "sql_performance_agent",
+        "source_code_analyst",
     }
 
 
@@ -72,8 +74,14 @@ async def test_bug_analyzer_must_check_anomalies_at_step_one(workers):
     assert rules[0].allowed is True
 
 
+def test_source_code_analyst_has_read_tool(workers):
+    tool_types = {type(t) for t in workers["source_code_analyst"]._tools}
+    assert tool_types == {ReadSourceFileTool}
+    assert workers["source_code_analyst"]._requirements == []
+
+
 def test_other_workers_have_no_requirements(workers):
-    for key in ("flow_runner", "log_capturer", "db_query_agent", "sql_performance_agent"):
+    for key in ("flow_runner", "log_capturer", "db_query_agent", "sql_performance_agent", "source_code_analyst"):
         assert workers[key]._requirements == []
 
 
@@ -86,5 +94,6 @@ def test_agent_summaries_cover_manager_and_all_workers():
         "DB Query Agent",
         "Bug Analyst",
         "SQL Performance Agent",
+        "Source Code Analyst",
     }
     assert agent_summaries() is AGENT_SUMMARIES
