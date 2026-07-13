@@ -6,7 +6,7 @@ import time
 
 import yaml
 
-from bee_bug_hunter import delegation_capture
+from bee_bug_hunter import delegation_capture, tool_capture
 from bee_bug_hunter.anomaly_detector import detect
 from bee_bug_hunter.config import DEFAULT_FLOW_KIND
 from bee_bug_hunter.logging_config import get_logger, log, new_run_context
@@ -14,6 +14,11 @@ from bee_bug_hunter.manager import build_supervisor
 from bee_bug_hunter.reports import save_report
 
 logger = get_logger(__name__)
+
+# Installed once at import time: from here on, every successful flow-runner /
+# log-capture tool call (for any flow run in this process) has its raw JSON
+# output recorded, keyed by the run_id contextvar — see tool_capture.py.
+tool_capture.install()
 
 
 def run_flow_once(flow_cfg: dict, duration_seconds: int) -> dict:
@@ -45,21 +50,31 @@ def run_flow_once(flow_cfg: dict, duration_seconds: int) -> dict:
         log(logger, logging.ERROR, "supervisor_run_failed", elapsed_s=round(time.monotonic() - started, 2))
         logger.exception("supervisor run raised")
         delegation_capture.clear(run_id)
+        tool_capture.clear(run_id)
         raise
 
     log(logger, logging.INFO, "flow_run_completed", elapsed_s=round(time.monotonic() - started, 2), run_id=run_id)
 
     # Independent of whatever the manager chose to quote in its final answer:
-    # pull the API Flow Runner / Docker Log Capturer's own reported output and
-    # run the same deterministic anomaly_detector the Bug Analyst's optional
-    # check_anomalies tool uses, so signal display doesn't depend on the manager
-    # having called that tool itself.
-    flow_raw = delegation_capture.get_by_role(run_id, "API Flow Runner") or ""
-    log_raw = delegation_capture.get_by_role(run_id, "Docker Log Capturer") or ""
+    # feed the anomaly detector the *raw tool JSON* recorded by tool_capture
+    # (network log, step results, per-container log content) — the workers'
+    # delegation answers are LLM prose and usually not parseable JSON, so they
+    # are only a last-resort fallback here.
+    flow_raw = (
+        tool_capture.get_flow_raw(run_id)
+        or delegation_capture.get_by_role(run_id, "API Flow Runner")
+        or ""
+    )
+    log_raw = (
+        tool_capture.get_log_raw(run_id)
+        or delegation_capture.get_by_role(run_id, "Docker Log Capturer")
+        or ""
+    )
     bug_report = delegation_capture.get_by_role(run_id, "Bug Analyst")
     perf_report = delegation_capture.get_by_role(run_id, "SQL Performance Agent")
     anomaly = detect(flow_raw, log_raw).to_dict()
     delegation_capture.clear(run_id)
+    tool_capture.clear(run_id)
 
     log(logger, logging.INFO, "anomaly_signals_computed", **anomaly)
 
