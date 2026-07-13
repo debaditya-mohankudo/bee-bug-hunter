@@ -107,6 +107,12 @@ class ClaudeCLIChatModel(ChatModel):
             raise RuntimeError("claude_cli provider: `claude` binary not found on PATH")
         self._claude_path = claude_path
 
+    async def clone(self) -> "ClaudeCLIChatModel":
+        # HandoffTool clones the target agent (and its llm) per delegation;
+        # this backend is stateless apart from the model name, so a fresh
+        # instance is a faithful clone.
+        return ClaudeCLIChatModel(model=self._model)
+
     @property
     def model_id(self) -> str:
         return self._model
