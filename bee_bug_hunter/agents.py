@@ -4,9 +4,9 @@ tools at all — only HandoffTools targeting these workers, which structurally
 enforces the 'manager only delegates' rule the CrewAI version needed a
 hierarchical-process gotcha workaround for."""
 from beeai_framework.agents.requirement import RequirementAgent
-from beeai_framework.memory import UnconstrainedMemory
 
 from bee_bug_hunter.llm import get_chat_model
+from bee_bug_hunter.logging_memory import LoggingMemory
 from bee_bug_hunter.tools.anomaly_tool import AnomalyCheckTool
 from bee_bug_hunter.tools.api_request_tool import ApiRequestFlowTool
 from bee_bug_hunter.tools.docker_log_tool import DockerLogCaptureTool
@@ -38,7 +38,7 @@ def build_agents(docker_host: str | None = None, mysql_cfg: dict | None = None) 
             "results in your answer."
         ),
         tools=[PlaywrightFlowTool(), ApiRequestFlowTool()],
-        memory=UnconstrainedMemory(),
+        memory=LoggingMemory(agent_name="API Flow Runner"),
     )
 
     log_capturer = RequirementAgent(
@@ -52,7 +52,7 @@ def build_agents(docker_host: str | None = None, mysql_cfg: dict | None = None) 
             "Include the captured log content per container in your answer."
         ),
         tools=[DockerLogCaptureTool(docker_host=docker_host)],
-        memory=UnconstrainedMemory(),
+        memory=LoggingMemory(agent_name="Docker Log Capturer"),
     )
 
     db_query_agent = RequirementAgent(
@@ -66,7 +66,7 @@ def build_agents(docker_host: str | None = None, mysql_cfg: dict | None = None) 
             "what the data actually looks like."
         ),
         tools=[MySQLQueryTool(**mysql_cfg)],
-        memory=UnconstrainedMemory(),
+        memory=LoggingMemory(agent_name="DB Query Agent"),
     )
 
     bug_analyzer = RequirementAgent(
@@ -81,7 +81,7 @@ def build_agents(docker_host: str | None = None, mysql_cfg: dict | None = None) 
             "heuristic first pass over raw flow/log output, but you make the final call yourself."
         ),
         tools=[AnomalyCheckTool()],
-        memory=UnconstrainedMemory(),
+        memory=LoggingMemory(agent_name="Bug Analyst"),
     )
 
     sql_performance_agent = RequirementAgent(
@@ -96,7 +96,7 @@ def build_agents(docker_host: str | None = None, mysql_cfg: dict | None = None) 
             "caching) backed by the EXPLAIN output — never a generic 'optimize your queries' answer."
         ),
         tools=[MySQLQueryTool(**mysql_cfg)],
-        memory=UnconstrainedMemory(),
+        memory=LoggingMemory(agent_name="SQL Performance Agent"),
     )
 
     return {

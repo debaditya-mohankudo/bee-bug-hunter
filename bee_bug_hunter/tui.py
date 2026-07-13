@@ -38,6 +38,18 @@ one-off.
 import logging
 import os
 
+# Must run before any beeai_framework import (including transitively, via the
+# bee_bug_hunter.* imports below): beeai_framework's own Logger class attaches
+# a raw StreamHandler(sys.stdout) directly to itself at construction time,
+# completely bypassing our own configure_logging() (which only controls the
+# root logger) and, worse, bypassing Textual's alternate-screen rendering --
+# any stray write straight to sys.stdout from a background thread races with
+# Textual's own redraws and shows up as flashing/garbled terminal output.
+# CONFIG.log_level is read once at import time from this env var, so setting
+# it any later (e.g. in main()) would be too late for loggers already built
+# during the import chain below. WARNING keeps the JSONL trail clean too.
+os.environ.setdefault("BEEAI_LOG_LEVEL", "WARNING")
+
 import yaml
 from dotenv import load_dotenv
 from rich.text import Text
@@ -126,12 +138,21 @@ class FeedLogHandler(logging.Handler):
         "mysql_query_refused": "tool_crashed",
     }
 
+    # Logged for the JSONL audit trail (see logging_memory.LoggingMemory) but far
+    # too high-volume to forward into the live feed -- every message added to
+    # any of the 6 agents' memory (system/user/tool-call/tool-result/final-answer,
+    # per agent, per turn) would otherwise burst in and flood/flicker the RichLog.
+    _SKIP_MESSAGES = {"memory_message_added", "memory_message_removed", "memory_reset"}
+
     def __init__(self, feed: EventFeed) -> None:
         super().__init__()
         self.feed = feed
 
     def emit(self, record: logging.LogRecord) -> None:
-        kind = self._KIND_BY_MESSAGE.get(record.getMessage(), "context_log")
+        message = record.getMessage()
+        if message in self._SKIP_MESSAGES:
+            return
+        kind = self._KIND_BY_MESSAGE.get(message, "context_log")
         extra = getattr(record, "extra_fields", None) or {}
         detail = " ".join(f"{k}={v}" for k, v in extra.items())
         text = f"{record.getMessage()} {detail}".strip()

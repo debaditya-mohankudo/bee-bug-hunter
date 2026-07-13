@@ -5,12 +5,12 @@ escalation itself; handoffs propagate the conversation so far to each worker
 (cross-delegation context comes free from HandoffTool's memory propagation,
 replacing CrewAI's Crew(memory=True) embedder setup)."""
 from beeai_framework.agents.requirement import RequirementAgent
-from beeai_framework.memory import UnconstrainedMemory
 
 from bee_bug_hunter.agents import build_agents
 from bee_bug_hunter.config import DEFAULT_FLOW_KIND
 from bee_bug_hunter.delegation_capture import CapturingHandoffTool
 from bee_bug_hunter.llm import get_chat_model
+from bee_bug_hunter.logging_memory import LoggingMemory
 
 
 def build_supervisor(
@@ -53,7 +53,7 @@ def build_supervisor(
             "manufacturing a finding."
         ),
         tools=handoffs,
-        memory=UnconstrainedMemory(),
+        memory=LoggingMemory(agent_name="Investigation Manager"),
     )
 
     if flow_kind == "api":
