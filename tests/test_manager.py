@@ -1,7 +1,8 @@
 """Tests for bee_bug_hunter.manager.build_supervisor: handoff wiring, the
 prompt's step ordering, and the ConditionalRequirements that structurally
-enforce "log_capturer must run before db_query_agent/bug_analyst/
-sql_performance_agent are delegated to." No live LLM call or docker
+enforce "flow_runner must run before log_capturer" and "log_capturer must
+run before db_query_agent/bug_analyst/sql_performance_agent/
+source_code_analyst are delegated to." No live LLM call or docker
 containers needed.
 """
 import pytest
@@ -47,8 +48,8 @@ def test_supervisor_handoff_names(supervisor):
     }
 
 
-def test_supervisor_has_four_ordering_requirements(supervisor):
-    assert len(supervisor._requirements) == 4
+def test_supervisor_has_five_ordering_requirements(supervisor):
+    assert len(supervisor._requirements) == 5
 
 
 def test_prompt_lists_steps_in_order():
@@ -69,6 +70,23 @@ def test_ui_flow_kind_selects_run_playwright_flow_tool():
     _supervisor, prompt = build_supervisor("demo_login", "demo_app-web-1", 5)
     assert "run_playwright_flow" in prompt
     assert "demo_login" in prompt
+
+
+def test_known_issue_note_is_prepended_to_prompt():
+    _supervisor, prompt = build_supervisor(
+        "demo_login", "demo_app-web-1", 5, known_issue_note="passwd vs password column bug in api_login"
+    )
+    assert prompt.index("passwd vs password column bug") < prompt.index("Investigate flow 'demo_login'")
+
+
+def test_no_known_issue_note_by_default():
+    _supervisor, prompt = build_supervisor("demo_login", "demo_app-web-1", 5)
+    assert "earlier in this same run" not in prompt
+
+
+def test_prompt_requires_summary_line_in_final_answer():
+    _supervisor, prompt = build_supervisor("demo_login", "demo_app-web-1", 5)
+    assert "SUMMARY:" in prompt
 
 
 @pytest.mark.asyncio
@@ -94,8 +112,20 @@ async def test_handoff_blocked_until_log_capturer_ran(supervisor, handoff_name):
 async def test_flow_runner_handoff_is_never_blocked_by_ordering(supervisor):
     """api_flow_runner has no ConditionalRequirement targeting it -- it should
     always be runnable, since it's the very first step."""
+    assert not any(r.source.name == "api_flow_runner" for r in supervisor._requirements)
+
+
+@pytest.mark.asyncio
+async def test_log_capturer_blocked_until_flow_runner_ran(supervisor):
     tools = list(supervisor._tools)
     for requirement in supervisor._requirements:
         await requirement.init(tools=tools, ctx=None)
 
-    assert not any(r.source.name == "api_flow_runner" for r in supervisor._requirements)
+    flow_tool = next(t for t in tools if t.name == "api_flow_runner")
+    requirement = next(r for r in supervisor._requirements if r.source.name == "docker_log_capturer")
+
+    rules_before = await requirement.run(_empty_state())
+    assert rules_before[0].allowed is False
+
+    rules_after = await requirement.run(_state_after(flow_tool))
+    assert rules_after[0].allowed is True

@@ -27,7 +27,7 @@ python -m bee_bug_hunter.tui                     # Textual TUI
 
 Flows are YAML files in `bee_bug_hunter/flows/` (steps: `goto`, `click`, `fill`,
 `wait_for_selector`, `wait_for_response`). The batch to monitor is listed in
-`bee_bug_hunter/flows_manifest.yaml` — each entry names a flow file (or a registered
+`bee_bug_hunter/manifest.yaml` — each entry names a flow file (or a registered
 `api_flows.py` function for `kind: api`) and the Docker containers backing it.
 
 ## Local test target: `demo_app/`

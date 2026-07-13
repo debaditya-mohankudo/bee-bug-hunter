@@ -87,7 +87,7 @@ class DockerLogCaptureTool(Tool[CaptureDockerLogsInput, ToolRunOptions, StringTo
 
     def __init__(self, docker_host: str | None = None, **kwargs) -> None:
         super().__init__(**kwargs)
-        # Per-flow override (see flows_manifest.yaml's docker_host comment) for which
+        # Per-flow override (see manifest.yaml's docker_host comment) for which
         # docker engine `docker logs` talks to; None means "whatever this process's
         # ambient docker context/DOCKER_HOST already points at".
         self.docker_host = docker_host

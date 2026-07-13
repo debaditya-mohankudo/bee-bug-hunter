@@ -3,7 +3,7 @@
 Four screens:
   1. HomeScreen     - what this app does, the crew's agent roster, and the
                        active LLM/MySQL config plus per-flow docker_host/mysql
-                       overrides from flows_manifest.yaml.
+                       overrides from manifest.yaml.
   2. FlowSelectScreen - pick which manifest flows to run, then run them
                         sequentially with a live EventFeed inline.
   3. AnomalyScreen  - deterministic anomaly signals (anomaly_detector.py) per
@@ -195,7 +195,7 @@ class HomeScreen(Screen):
 
     def on_screen_resume(self) -> None:
         update_breadcrumb(self.app)
-        # Refresh in case .env/flows_manifest.yaml were hand-edited externally
+        # Refresh in case .env/manifest.yaml were hand-edited externally
         # while this screen was in the background.
         self.query_one("#config-details", Static).update(self._config_text())
 
@@ -225,7 +225,7 @@ class HomeScreen(Screen):
             "  edit: MYSQL_* in .env overrides bee_bug_hunter/config.py's APP_DB_CONN "
             "(read by tools/mysql_tool.py:MySQLQueryTool._run())",
             "",
-            "Per-flow overrides -- edit bee_bug_hunter/flows_manifest.yaml's docker_host/mysql: keys:",
+            "Per-flow overrides -- edit bee_bug_hunter/manifest.yaml's docker_host/mysql: keys:",
         ]
         for flow_cfg in self.app.manifest.get("flows", []):
             docker_host = flow_cfg.get("docker_host")

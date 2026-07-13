@@ -7,7 +7,7 @@ a port of `crew-bug-hunter` (CrewAI) with the same features:
   domain tools itself) to five workers: API Flow Runner (Playwright / requests), Docker Log
   Capturer, DB Query Agent, Bug Analyst, and SQL Performance Agent.
 - Flows are YAML files in `bee_bug_hunter/flows/`; the batch to monitor is listed in
-  `bee_bug_hunter/flows_manifest.yaml`.
+  `bee_bug_hunter/manifest.yaml`.
 - Switchable LLM providers via `LLM_PROVIDER` in `.env`: `ollama` (default, local, no API
   key), `openai`, or `anthropic`.
 - Structured JSONL logging with a per-run `run_id` correlation id; one markdown report per
@@ -37,7 +37,7 @@ source .venv/bin/activate
 python -m bee_bug_hunter.tui
 ```
 
-Reads `.env` and `bee_bug_hunter/flows_manifest.yaml` on launch, and writes the same
+Reads `.env` and `bee_bug_hunter/manifest.yaml` on launch, and writes the same
 JSONL trail to `logs/bee_bug_hunter.jsonl` as the CLI. Four screens:
 
 1. **Home** — what the app does, the agent roster, and the active LLM/MySQL config

@@ -8,7 +8,7 @@ like PlaywrightFlowTool's return value ({"flow_name", "step_results",
 Runner keep working unmodified regardless of which tool actually ran the flow.
 
 Add a new API flow by writing a function and decorating it with @api_flow;
-its registry name becomes the value flows_manifest.yaml's `api_flow:` key and
+its registry name becomes the value manifest.yaml's `api_flow:` key and
 ApiRequestFlowTool's flow_name argument both refer to.
 """
 from typing import Callable

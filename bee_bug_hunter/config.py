@@ -2,9 +2,9 @@
 Import from here instead of re-declaring any of these locally.
 """
 
-DEFAULT_MANIFEST = "bee_bug_hunter/flows_manifest.yaml"
+DEFAULT_MANIFEST = "bee_bug_hunter/manifest.yaml"
 
-# flows_manifest.yaml's `kind:` default -- both manager.build_supervisor's
+# manifest.yaml's `kind:` default -- both manager.build_supervisor's
 # flow_kind param and orchestrator.py's flow_cfg.get("kind", ...) read this.
 DEFAULT_FLOW_KIND = "ui"
 
@@ -51,7 +51,7 @@ APP_DB_CONN = {
     "database": "",
 }
 
-# Fallback when a flow's docker_host: override isn't set (see flows_manifest.yaml's
+# Fallback when a flow's docker_host: override isn't set (see manifest.yaml's
 # header comment) -- DockerLogCaptureTool doesn't set DOCKER_HOST at all in this
 # case; "local" here is purely a display label, not a value passed to Docker.
 APP_DOCKER_CONN = {

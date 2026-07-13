@@ -2,6 +2,8 @@
 supervisor, which decides sequencing and escalation itself (see manager.py)."""
 import asyncio
 import logging
+import os
+import re
 import time
 
 import yaml
@@ -9,9 +11,12 @@ import yaml
 from bee_bug_hunter import delegation_capture, tool_capture
 from bee_bug_hunter.anomaly_detector import detect
 from bee_bug_hunter.config import DEFAULT_FLOW_KIND
+from bee_bug_hunter.known_issues import compute_fingerprint, note_for, record_issue
 from bee_bug_hunter.logging_config import get_logger, log, new_run_context
 from bee_bug_hunter.manager import build_supervisor
 from bee_bug_hunter.reports import save_report
+
+_SUMMARY_LINE_PATTERN = re.compile(r"^SUMMARY:\s*(.+)$", re.MULTILINE)
 
 logger = get_logger(__name__)
 
@@ -21,13 +26,23 @@ logger = get_logger(__name__)
 tool_capture.install()
 
 
-def run_flow_once(flow_cfg: dict, duration_seconds: int) -> dict:
+def run_flow_once(flow_cfg: dict, duration_seconds: int, known_issues: list | None = None) -> dict:
+    """known_issues, if given, is a per-batch-pass registry (see known_issues.py)
+    shared across every flow in the same run_batch_once call -- every flow gets
+    told what any earlier flow in this same pass found, and the manager decides
+    for itself whether it's relevant. None means "standalone run" (e.g. a
+    single-flow --manifest for testing): no known-issue note is used at all,
+    and nothing gets recorded anywhere."""
     flow_name = flow_cfg["name"]
     containers = ",".join(flow_cfg["containers"])
     run_id = new_run_context(flow_name)
 
     log(logger, logging.INFO, "flow_run_started", containers=containers, duration_seconds=duration_seconds)
     started = time.monotonic()
+
+    known_issue_note = note_for(known_issues) if known_issues is not None else None
+    if known_issue_note:
+        log(logger, logging.INFO, "known_issue_note_applied", note=known_issue_note)
 
     try:
         supervisor, prompt = build_supervisor(
@@ -36,6 +51,7 @@ def run_flow_once(flow_cfg: dict, duration_seconds: int) -> dict:
             mysql_cfg=flow_cfg.get("mysql"),
             flow_kind=flow_cfg.get("kind", DEFAULT_FLOW_KIND),
             api_flow_name=flow_cfg.get("api_flow"),
+            known_issue_note=known_issue_note,
         )
         # asyncio.run copies the current context, so the run_id contextvar set
         # above is visible to every tool call inside the supervisor's loop.
@@ -90,15 +106,37 @@ def run_flow_once(flow_cfg: dict, duration_seconds: int) -> dict:
     log(logger, logging.INFO, "report_saved", path=report_path)
     report_result["report_path"] = report_path
 
+    if known_issues is not None and compute_fingerprint(anomaly) != "clean":
+        summary_match = _SUMMARY_LINE_PATTERN.search(str(result))
+        summary = summary_match.group(1).strip() if summary_match else str(result)[:200]
+        record_issue(known_issues, flow_name, summary)
+
     return report_result
 
 
 def run_batch_once(manifest: dict) -> list[dict]:
     duration_seconds = manifest.get("duration_seconds", 30)
+
+    if os.getenv("LLM_PROVIDER") == "claude_cli":
+        # Same reason main.py clears sessions at process startup: each flow run gets a
+        # fresh, empty RequirementAgentRunState, but claude_cli's per-(flow, role)
+        # sessions are cached in-memory in ClaudeCLIChatModel._instances for the life of
+        # the process. In monitor_loop's continuous mode, that cache otherwise survives
+        # across poll cycles within this same process, so cycle 2+ would resume a
+        # session whose CLI-side history already has cycle 1's completed steps baked
+        # in -- the same crash-recovery mismatch, just without a crash needed.
+        from bee_bug_hunter.claude_cli_llm import clear_persisted_sessions
+
+        clear_persisted_sessions()
+
+    # Fresh every batch pass, discarded at the end -- never persisted across poll
+    # cycles or process restarts (see known_issues.py's module docstring for why).
+    known_issues: list = []
+
     results = []
     for flow_cfg in manifest["flows"]:
         try:
-            results.append(run_flow_once(flow_cfg, duration_seconds))
+            results.append(run_flow_once(flow_cfg, duration_seconds, known_issues))
         except Exception:
             # one flow's failure shouldn't take down the rest of the batch;
             # the exception is already logged with full context in run_flow_once.

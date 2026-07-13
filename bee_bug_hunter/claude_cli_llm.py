@@ -103,6 +103,24 @@ def _update_session_store(mutate) -> None:
         path.write_text(json.dumps(sessions, indent=2))
 
 
+def clear_persisted_sessions() -> None:
+    """Wipes the on-disk session store (and any in-memory ClaudeCLIChatModel
+    instances) so every process invocation starts with fresh root+role
+    sessions. A killed/crashed run leaves a persisted session whose CLI-side
+    history can be ahead of the BeeAI-side RequirementAgentRunState (which is
+    always in-memory and starts empty) -- e.g. the manager's session
+    "remembers" a completed flow_runner call from an aborted prior run, tries
+    to skip straight to log_capturer, and gets structurally rejected by
+    ConditionalRequirement without a clean way to recover. Called at the top
+    of every orchestrator.run_batch_once iteration (covers both a fresh
+    --once process and every poll cycle of a long-running monitor_loop)
+    rather than trying to reconcile the two on the fly."""
+    path = _session_store_path()
+    with _session_store_lock:
+        path.unlink(missing_ok=True)
+    ClaudeCLIChatModel._instances.clear()
+
+
 _ROOT_SESSION_PROMPT = (
     "You are one of several specialized agents collaborating on an automated bug-hunting "
     "investigation of the '{flow_name}' flow (containers: {containers}). You will each be given "

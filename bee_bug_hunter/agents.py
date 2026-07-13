@@ -20,7 +20,7 @@ def build_agents(
     docker_host: str | None = None, mysql_cfg: dict | None = None,
     flow_name: str = "default", containers: str = "",
 ) -> dict:
-    """docker_host/mysql_cfg are per-flow overrides from flows_manifest.yaml (see
+    """docker_host/mysql_cfg are per-flow overrides from manifest.yaml (see
     that file's comments): None means "use the .env default for everything".
     flow_name/containers are only meaningful for claude_cli (its per-flow root+
     per-role fork session topology, see claude_cli_llm.py); every other provider

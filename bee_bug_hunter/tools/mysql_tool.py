@@ -41,7 +41,7 @@ class MySQLQueryTool(Tool[RunQueryInput, ToolRunOptions, StringToolOutput]):
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
-        # Per-flow override (see flows_manifest.yaml's mysql: block); any field
+        # Per-flow override (see manifest.yaml's mysql: block); any field
         # left None falls back to the matching MYSQL_* env var.
         self.host = host
         self.port = port

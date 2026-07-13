@@ -1,0 +1,15 @@
+# Scoped copy of manifest.yaml with only the pure API (kind: api) flow -- for
+# quickly testing/investigating just the API path without paying for a
+# Playwright browser run too:
+#
+#   python -m bee_bug_hunter.main --once --manifest bee_bug_hunter/manifest_api_only.yaml
+#
+# Keep in sync with manifest.yaml's example_login_api entry.
+duration_seconds: 30
+poll_interval_seconds: 300
+
+flows:
+  - name: example_login_api
+    kind: api
+    api_flow: example_login_api
+    containers: [demo-api, demo-db]

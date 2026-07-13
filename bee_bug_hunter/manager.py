@@ -22,11 +22,17 @@ def build_supervisor(
     mysql_cfg: dict | None = None,
     flow_kind: str = DEFAULT_FLOW_KIND,
     api_flow_name: str | None = None,
+    known_issue_note: str | None = None,
 ) -> tuple[RequirementAgent, str]:
     """Returns (supervisor agent, investigation prompt). flow_kind selects which
     Flow Runner tool the manager is told to have the worker use: 'ui' (default)
     drives flows/<flow_name>.yaml via Playwright; 'api' calls a registered
-    bee_bug_hunter/api_flows.py function (api_flow_name) via requests instead."""
+    bee_bug_hunter/api_flows.py function (api_flow_name) via requests instead.
+    known_issue_note, if given (see known_issues.py), summarizes what another
+    flow already found this same batch pass on a container this flow also
+    touches -- prepended as context, not a shortcut: the manager still
+    investigates from real evidence every time and only uses the note to judge
+    whether this run reproduces the same issue or something new."""
     workers = build_agents(
         docker_host=docker_host, mysql_cfg=mysql_cfg, flow_name=flow_name, containers=containers,
     )
@@ -43,8 +49,12 @@ def build_supervisor(
     # Structural ordering guarantee, replacing "trust the prompt": the Bug Analyst,
     # SQL Performance Agent, and DB Query Agent must not be delegated to until the
     # Docker Log Capturer has actually run, since they're each handed "the logs
-    # from step 2" that would otherwise not exist yet.
+    # from step 2" that would otherwise not exist yet. Likewise the Docker Log
+    # Capturer must not run until the Flow Runner has, since `capture_docker_logs`'s
+    # `--since 5m` window is only a hedge for capturing a flow's already-emitted
+    # output, not a substitute for real ordering (see docker_log_tool.py).
     requirements = [
+        ConditionalRequirement(handoffs["log_capturer"], only_after=handoffs["flow_runner"]),
         ConditionalRequirement(handoffs["db_query_agent"], only_after=handoffs["log_capturer"]),
         ConditionalRequirement(handoffs["bug_analyzer"], only_after=handoffs["log_capturer"]),
         ConditionalRequirement(handoffs["sql_performance_agent"], only_after=handoffs["log_capturer"]),
@@ -82,7 +92,17 @@ def build_supervisor(
             f"tool with flow_name='{flow_name}'. Get back its full network log and step results.\n"
         )
 
+    known_issue_block = (
+        f"Note: earlier in this same run, {known_issue_note}\n"
+        "Treat this only as a hint, not a conclusion -- confirm from this flow's own real "
+        "evidence whether the same issue reproduces here too or something new/different is "
+        "happening.\n\n"
+        if known_issue_note
+        else ""
+    )
+
     prompt = (
+        f"{known_issue_block}"
         f"Investigate flow '{flow_name}'. Delegate in this order:\n"
         f"{step1}"
         "2. Hand off to 'Docker Log Capturer': capture logs using its capture_docker_logs tool "
@@ -98,8 +118,10 @@ def build_supervisor(
         f"suspected column name or query pattern), hand off to 'Source Code Analyst' with the "
         f"relevant container name from [{containers}] and the hypothesis, so it can confirm or "
         "refute it against the real source before you finalize the report.\n\n"
-        "Final answer: a markdown report — run summary, whether any issue was found, and (if so) "
-        "the specialist findings and recommended fix. If clean, a short statement saying so."
+        "Final answer: begin with a single line 'SUMMARY: <one sentence>' stating either the "
+        "confirmed root cause (e.g. 'passwd vs password column bug in api_login') or 'clean' if "
+        "nothing was found, then a blank line, then the full markdown report — run summary, "
+        "whether any issue was found, and (if so) the specialist findings and recommended fix."
     )
 
     return supervisor, prompt
