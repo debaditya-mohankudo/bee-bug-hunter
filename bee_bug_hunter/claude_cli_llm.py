@@ -39,6 +39,23 @@ Available tools:
 {tool_descriptions}
 """.strip()
 
+# BeeAI sometimes forces ChatModelInput.tool_choice ("required", or a specific Tool)
+# to guarantee the agent takes an action this step. Left unhandled, the model often
+# just answers in prose since the base protocol above always offers a final_answer
+# escape hatch -- BeeAI's own Retryable then catches the resulting ChatModelToolCallError
+# and re-asks with a corrective nudge, which works but costs a wasted `claude -p`
+# subprocess call (real latency) per miss. Stating the constraint up front avoids that.
+_REQUIRED_TOOL_CHOICE_INSTRUCTIONS = """
+IMPORTANT: A tool call is required this turn. You MUST respond with ONLY the
+{{"tool": "<tool_name>", "args": {{...}}}} JSON for one of the tools listed above.
+Do NOT respond with plain text and do NOT use the final_answer format this turn.
+""".strip()
+
+_FORCED_TOOL_INSTRUCTIONS = """
+IMPORTANT: You MUST call the '{tool_name}' tool this turn. Respond with ONLY this JSON
+(no other text): {{"tool": "{tool_name}", "args": {{...}}}}
+""".strip()
+
 
 def _extract_json_object(text: str) -> dict | None:
     text = text.strip()
@@ -129,6 +146,12 @@ class ClaudeCLIChatModel(ChatModel):
                 _TOOL_PROTOCOL_INSTRUCTIONS.format(tool_descriptions=_describe_tools(input.tools))
             )
 
+        tool_choice = input.tool_choice
+        if tool_choice == "required":
+            system_prompt += "\n\n" + _REQUIRED_TOOL_CHOICE_INSTRUCTIONS
+        elif tool_choice is not None and hasattr(tool_choice, "name"):
+            system_prompt += "\n\n" + _FORCED_TOOL_INSTRUCTIONS.format(tool_name=tool_choice.name)
+
         raw = await asyncio.to_thread(self._invoke_cli, system_prompt, prompt)
         parsed = _extract_json_object(raw)
 
@@ -165,7 +188,16 @@ class ClaudeCLIChatModel(ChatModel):
             cmd, input=user_prompt, capture_output=True, text=True, timeout=240,
         )
         if proc.returncode != 0:
-            raise RuntimeError(f"claude CLI exited {proc.returncode}: {proc.stderr[:500]}")
+            # API-level failures (rate limits, auth, etc.) land in stdout's JSON
+            # `result` field with is_error=true and an empty stderr -- surface
+            # whichever actually has content instead of always showing stderr.
+            detail = proc.stderr.strip()
+            if not detail:
+                try:
+                    detail = json.loads(proc.stdout).get("result", proc.stdout[:500])
+                except json.JSONDecodeError:
+                    detail = proc.stdout[:500]
+            raise RuntimeError(f"claude CLI exited {proc.returncode}: {detail}")
 
         data = json.loads(proc.stdout)
         if data.get("is_error"):
