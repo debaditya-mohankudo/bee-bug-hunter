@@ -28,8 +28,28 @@ cp .env.example .env  # fill in LLM_PROVIDER, MySQL creds, etc.
 ```bash
 python -m bee_bug_hunter.main --once     # one pass over every flow, then exit
 python -m bee_bug_hunter.main            # continuous monitor
-python -m bee_bug_hunter.tui             # TUI
 ```
+
+## TUI
+
+```bash
+source .venv/bin/activate
+python -m bee_bug_hunter.tui
+```
+
+Reads `.env` and `bee_bug_hunter/flows_manifest.yaml` on launch, and writes the same
+JSONL trail to `logs/bee_bug_hunter.jsonl` as the CLI. Four screens:
+
+1. **Home** — what the app does, the agent roster, and the active LLM/MySQL config
+   plus per-flow overrides. Press `r` to pick UI flows, `a` for API flows.
+2. **Select Flows** — tick the flows to run, hit **Run Selected**, and watch the
+   live event feed while the investigation runs.
+3. **Anomaly Signals** — deterministic bug/perf signals per flow (from the raw
+   flow-runner / log-capturer tool output). Press `n` for the reports.
+4. **Results** — each flow's Bug Analyst / SQL Performance report (or the manager's
+   summary when no specialist was escalated to), with the saved `reports/*.md` path.
+
+`escape` goes back, `q` quits.
 
 ## Local test target: `demo_app/`
 
