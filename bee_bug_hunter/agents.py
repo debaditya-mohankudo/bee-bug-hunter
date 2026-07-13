@@ -6,11 +6,9 @@ hierarchical-process gotcha workaround for."""
 from beeai_framework.agents.requirement import RequirementAgent
 from beeai_framework.memory import UnconstrainedMemory
 
-from bee_bug_hunter.context_store import ContextStore
 from bee_bug_hunter.llm import get_chat_model
 from bee_bug_hunter.tools.anomaly_tool import AnomalyCheckTool
 from bee_bug_hunter.tools.api_request_tool import ApiRequestFlowTool
-from bee_bug_hunter.tools.context_store_tool import AddObservationTool, ListObservationsTool
 from bee_bug_hunter.tools.docker_log_tool import DockerLogCaptureTool
 from bee_bug_hunter.tools.mysql_tool import MySQLQueryTool
 from bee_bug_hunter.tools.playwright_tool import PlaywrightFlowTool
@@ -71,7 +69,6 @@ def build_agents(docker_host: str | None = None, mysql_cfg: dict | None = None) 
         memory=UnconstrainedMemory(),
     )
 
-    bug_analyst_store = ContextStore(agent_name="Bug Analyst")
     bug_analyzer = RequirementAgent(
         llm=llm,
         name="Bug Analyst",
@@ -81,20 +78,12 @@ def build_agents(docker_host: str | None = None, mysql_cfg: dict | None = None) 
             "You are a senior engineer who reads flow execution results, container logs, and database "
             "query output together, and produces a precise, evidence-backed root-cause analysis with a "
             "concrete recommended fix — not vague speculation. You may use check_anomalies as a quick "
-            "heuristic first pass over raw flow/log output, but you make the final call yourself. Use "
-            "add_observation to jot atomic facts as you find them (a column name, an error, a query) "
-            "and list_observations to review them before writing your final report -- this scratchpad "
-            "is private to you, not shared with other agents or the manager."
+            "heuristic first pass over raw flow/log output, but you make the final call yourself."
         ),
-        tools=[
-            AnomalyCheckTool(),
-            AddObservationTool(store=bug_analyst_store),
-            ListObservationsTool(store=bug_analyst_store),
-        ],
+        tools=[AnomalyCheckTool()],
         memory=UnconstrainedMemory(),
     )
 
-    sql_perf_store = ContextStore(agent_name="SQL Performance Agent")
     sql_performance_agent = RequirementAgent(
         llm=llm,
         name="SQL Performance Agent",
@@ -104,15 +93,9 @@ def build_agents(docker_host: str | None = None, mysql_cfg: dict | None = None) 
             "You are a database performance specialist. Given queries observed to run slowly during a "
             "flow, you run EXPLAIN on them with the run_mysql_query tool, look for missing indexes, "
             "full table scans, or N+1 patterns, and recommend a specific fix (index, query rewrite, "
-            "caching) backed by the EXPLAIN output — never a generic 'optimize your queries' answer. Use "
-            "add_observation to jot atomic facts as you find them and list_observations to review them "
-            "before writing your final recommendation -- this scratchpad is private to you."
+            "caching) backed by the EXPLAIN output — never a generic 'optimize your queries' answer."
         ),
-        tools=[
-            MySQLQueryTool(**mysql_cfg),
-            AddObservationTool(store=sql_perf_store),
-            ListObservationsTool(store=sql_perf_store),
-        ],
+        tools=[MySQLQueryTool(**mysql_cfg)],
         memory=UnconstrainedMemory(),
     )
 
