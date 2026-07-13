@@ -1,0 +1,112 @@
+"""Batch-of-flows monitor loop: each flow is handed to the Investigation Manager
+supervisor, which decides sequencing and escalation itself (see manager.py)."""
+import asyncio
+import logging
+import time
+
+import yaml
+
+from bee_bug_hunter import delegation_capture
+from bee_bug_hunter.anomaly_detector import detect
+from bee_bug_hunter.config import DEFAULT_FLOW_KIND
+from bee_bug_hunter.logging_config import get_logger, log, new_run_context
+from bee_bug_hunter.manager import build_supervisor
+from bee_bug_hunter.reports import save_report
+
+logger = get_logger(__name__)
+
+
+def run_flow_once(flow_cfg: dict, duration_seconds: int) -> dict:
+    flow_name = flow_cfg["name"]
+    containers = ",".join(flow_cfg["containers"])
+    run_id = new_run_context(flow_name)
+
+    log(logger, logging.INFO, "flow_run_started", containers=containers, duration_seconds=duration_seconds)
+    started = time.monotonic()
+
+    try:
+        supervisor, prompt = build_supervisor(
+            flow_name, containers, duration_seconds,
+            docker_host=flow_cfg.get("docker_host"),
+            mysql_cfg=flow_cfg.get("mysql"),
+            flow_kind=flow_cfg.get("kind", DEFAULT_FLOW_KIND),
+            api_flow_name=flow_cfg.get("api_flow"),
+        )
+        # asyncio.run copies the current context, so the run_id contextvar set
+        # above is visible to every tool call inside the supervisor's loop.
+        # supervisor.run() returns a BeeAI Run (awaitable, not a coroutine),
+        # so it must be awaited inside a real coroutine for asyncio.run.
+        async def _drive():
+            return await supervisor.run(prompt)
+
+        output = asyncio.run(_drive())
+        result = output.last_message.text
+    except Exception:
+        log(logger, logging.ERROR, "supervisor_run_failed", elapsed_s=round(time.monotonic() - started, 2))
+        logger.exception("supervisor run raised")
+        delegation_capture.clear(run_id)
+        raise
+
+    log(logger, logging.INFO, "flow_run_completed", elapsed_s=round(time.monotonic() - started, 2), run_id=run_id)
+
+    # Independent of whatever the manager chose to quote in its final answer:
+    # pull the API Flow Runner / Docker Log Capturer's own reported output and
+    # run the same deterministic anomaly_detector the Bug Analyst's optional
+    # check_anomalies tool uses, so signal display doesn't depend on the manager
+    # having called that tool itself.
+    flow_raw = delegation_capture.get_by_role(run_id, "API Flow Runner") or ""
+    log_raw = delegation_capture.get_by_role(run_id, "Docker Log Capturer") or ""
+    bug_report = delegation_capture.get_by_role(run_id, "Bug Analyst")
+    perf_report = delegation_capture.get_by_role(run_id, "SQL Performance Agent")
+    anomaly = detect(flow_raw, log_raw).to_dict()
+    delegation_capture.clear(run_id)
+
+    log(logger, logging.INFO, "anomaly_signals_computed", **anomaly)
+
+    report_result = {
+        "flow": flow_name,
+        "run_id": run_id,
+        "response": str(result),
+        "anomaly": anomaly,
+        "bug_report": bug_report,
+        "perf_report": perf_report,
+    }
+    report_path = save_report(report_result)
+    log(logger, logging.INFO, "report_saved", path=report_path)
+    report_result["report_path"] = report_path
+
+    return report_result
+
+
+def run_batch_once(manifest: dict) -> list[dict]:
+    duration_seconds = manifest.get("duration_seconds", 30)
+    results = []
+    for flow_cfg in manifest["flows"]:
+        try:
+            results.append(run_flow_once(flow_cfg, duration_seconds))
+        except Exception:
+            # one flow's failure shouldn't take down the rest of the batch;
+            # the exception is already logged with full context in run_flow_once.
+            log(logger, logging.ERROR, "flow_run_skipped_after_failure", flow=flow_cfg.get("name"))
+            continue
+    return results
+
+
+def monitor_loop(manifest_path: str, once: bool = False):
+    with open(manifest_path) as f:
+        manifest = yaml.safe_load(f)
+
+    poll_interval = manifest.get("poll_interval_seconds", 300)
+    log(logger, logging.INFO, "monitor_loop_started", manifest=manifest_path, poll_interval_seconds=poll_interval, once=once)
+
+    while True:
+        results = run_batch_once(manifest)
+        for r in results:
+            if r["response"]:
+                log(logger, logging.INFO, "response_report", flow=r["flow"], run_id=r["run_id"], report=r["response"])
+
+        if once:
+            return results
+
+        log(logger, logging.INFO, "monitor_loop_sleeping", seconds=poll_interval)
+        time.sleep(poll_interval)

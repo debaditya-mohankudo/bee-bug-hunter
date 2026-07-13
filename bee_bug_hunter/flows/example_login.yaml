@@ -1,0 +1,19 @@
+base_url: http://localhost:3000
+headless: true
+steps:
+  - action: goto
+    path: /login
+  - action: fill
+    selector: "#email"
+    value: test@example.com
+  - action: fill
+    selector: "#password"
+    value: password123
+  - action: click
+    selector: "#login-submit"
+  - action: wait_for_response
+    url_contains: /api/auth/login
+    timeout_ms: 10000
+  - action: wait_for_selector
+    selector: "#dashboard"
+    timeout_ms: 10000

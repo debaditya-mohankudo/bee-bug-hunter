@@ -1,0 +1,31 @@
+services:
+  demo-db:
+    image: mysql:8.0
+    container_name: demo-db
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: demo
+    ports:
+      - "3306:3306"
+    volumes:
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-proot"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  demo-api:
+    build: .
+    container_name: demo-api
+    environment:
+      MYSQL_HOST: demo-db
+      MYSQL_PORT: "3306"
+      MYSQL_USER: root
+      MYSQL_PASSWORD: root
+      MYSQL_DATABASE: demo
+    ports:
+      - "3000:5000"
+    depends_on:
+      demo-db:
+        condition: service_healthy

@@ -1,0 +1,32 @@
+# List every business-case API flow to monitor and the containers backing it.
+#
+# kind: ui (default) drives bee_bug_hunter/flows/<name>.yaml via Playwright, a real
+#       browser -- for flows that render/click something.
+# kind: api skips Playwright entirely and calls a registered Python/requests function
+#       from bee_bug_hunter/api_flows.py instead (api_flow: <registry name>) -- for
+#       flows that are pure JSON API calls with nothing to render.
+#
+# Optional per-flow overrides (fall back to .env's MYSQL_*/local docker when omitted):
+#   docker_host: null for the local docker daemon, or a docker CLI target such as
+#                tcp://host:2376 / ssh://user@host -- passed through as DOCKER_HOST
+#                to the `docker logs` subprocess, so Docker Log Capturer can reach a
+#                remote engine instead of assuming everything runs on this machine.
+#   mysql:       host/port/user/password/database overrides for DB Query Agent /
+#                SQL Performance Agent's run_mysql_query tool, for flows whose DB
+#                isn't the single one configured in .env.
+duration_seconds: 30
+poll_interval_seconds: 300
+
+flows:
+  - name: example_login
+    containers: [demo-api, demo-db]
+    # docker_host: tcp://remote-docker-host:2376
+    # mysql:
+    #   host: remote-db-host
+    #   database: demo
+  - name: example_orders
+    containers: [demo-api, demo-db]
+  - name: example_login_api
+    kind: api
+    api_flow: example_login_api
+    containers: [demo-api, demo-db]

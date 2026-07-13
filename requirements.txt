@@ -1,0 +1,7 @@
+beeai-framework==0.1.81
+playwright>=1.47.0
+requests>=2.31.0
+pymysql>=1.1.0
+pyyaml>=6.0
+python-dotenv>=1.0.0
+textual>=0.60.0
