@@ -14,7 +14,6 @@ LLM_MODEL_ENV_VAR = {
     "ollama": "OLLAMA_MODEL",
     "openai": "OPENAI_MODEL",
     "anthropic": "ANTHROPIC_MODEL",
-    "claude_cli": "CLAUDE_CLI_MODEL",
 }
 
 DEFAULT_LLM_PROVIDER = "ollama"
@@ -22,14 +21,13 @@ DEFAULT_LLM_PROVIDER = "ollama"
 # Non-secret LLM defaults -- llm.py:get_chat_model() falls back to these when
 # the matching env var isn't set. Real credentials (OPENAI_API_KEY,
 # ANTHROPIC_API_KEY) stay .env-only and are never given a default here.
-DEFAULT_OLLAMA_MODEL = "llama3.1"
+DEFAULT_OLLAMA_MODEL = "qwen3:4b"
 DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434"
 # Ollama-only: context window size in tokens, forwarded to Ollama's
 # options.num_ctx. Not applicable to the other providers.
 DEFAULT_OLLAMA_NUM_CTX = 16384
 DEFAULT_OPENAI_MODEL = "gpt-4o"
 DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-5"
-DEFAULT_CLAUDE_CLI_MODEL = "sonnet"
 
 DEFAULT_LOG_FILE = "logs/bee_bug_hunter.jsonl"
 DEFAULT_LOG_LEVEL = "INFO"

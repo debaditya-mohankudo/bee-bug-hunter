@@ -3,10 +3,8 @@ import os
 
 from beeai_framework.backend import ChatModel
 
-from bee_bug_hunter.claude_cli_llm import ClaudeCLIChatModel
 from bee_bug_hunter.config import (
     DEFAULT_ANTHROPIC_MODEL,
-    DEFAULT_CLAUDE_CLI_MODEL,
     DEFAULT_LLM_PROVIDER,
     DEFAULT_OLLAMA_BASE_URL,
     DEFAULT_OLLAMA_MODEL,
@@ -30,14 +28,6 @@ _SEQUENTIAL_TOOL_CALLS = {"allow_parallel_tool_calls": False}
 def get_chat_model() -> ChatModel:
     provider = os.getenv("LLM_PROVIDER", DEFAULT_LLM_PROVIDER).lower()
 
-    if provider == "claude_cli":
-        # Belt-and-suspenders: ClaudeCLIChatModel's own _create() only ever parses one
-        # {"tool": ...} JSON object per CLI call, so it's structurally incapable of
-        # emitting >1 tool call per turn regardless of this flag -- set for consistency
-        # with the other providers, not because this backend actually needs it.
-        return ClaudeCLIChatModel(
-            model=os.getenv("CLAUDE_CLI_MODEL", DEFAULT_CLAUDE_CLI_MODEL), **_SEQUENTIAL_TOOL_CALLS,
-        )
     if provider == "ollama":
         from beeai_framework.adapters.ollama.backend.chat import OllamaChatModel
 

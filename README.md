@@ -8,8 +8,8 @@ a port of `crew-bug-hunter` (CrewAI) with the same features:
   Capturer, DB Query Agent, Bug Analyst, and SQL Performance Agent.
 - Flows are YAML files in `bee_bug_hunter/flows/`; the batch to monitor is listed in
   `bee_bug_hunter/flows_manifest.yaml`.
-- Switchable LLM providers via `LLM_PROVIDER` in `.env`: `ollama`, `openai`, `anthropic`, or
-  `claude_cli` (shells to `claude -p`, reusing your Claude Code login — no API key).
+- Switchable LLM providers via `LLM_PROVIDER` in `.env`: `ollama` (default, local, no API
+  key), `openai`, or `anthropic`.
 - Structured JSONL logging with a per-run `run_id` correlation id; one markdown report per
   flow run in `reports/`.
 - A Textual TUI (`python -m bee_bug_hunter.tui`).

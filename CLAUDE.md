@@ -69,14 +69,19 @@ output); `orchestrator.run_flow_once` uses it to compute deterministic anomaly s
 
 ## LLM providers (`llm.py`)
 
-`LLM_PROVIDER` in `.env`: `ollama`, `openai`, `anthropic`, or `claude_cli`.
+`LLM_PROVIDER` in `.env`: `ollama` (default, native tool calling, no API key), `openai`,
+or `anthropic`.
 
-`claude_cli` (`claude_cli_llm.py`) is a custom `ChatModel` subclass shelling to
-`claude -p --safe-mode --tools none` per reasoning step, reusing your Claude Code OAuth
-login. Tool calls are bridged: tool schemas go in the system prompt, the model replies with
-`{"tool": ..., "args": {...}}` or `{"final_answer": ...}`, and `_create()` translates a
-tool-call reply into a native `MessageToolCallContent` so BeeAI's own agent loop executes
-the tool — no hand-rolled tool loop (unlike the CrewAI original).
+There used to be a `claude_cli` provider (`claude_cli_llm.py`) that shelled to
+`claude -p --safe-mode --tools none` per reasoning step, bridging tool calls through a
+hand-rolled `{"tool": ..., "args": {...}}` JSON text protocol since the CLI's own tool use
+was disabled. Removed: `RequirementAgent`'s per-step forced `tool_choice` plus a
+subprocess-per-step, no-prompt-caching text bridge is a poor fit for a frontier model with
+native tool calling and a large cacheable context — it produced a ~36% wasted-call rate
+(`missed_required_tool_call`, the model not reliably following the text convention) and no
+prompt-cache reuse across steps. This decomposed-into-many-forced-tool-choice-steps
+architecture is a better match for small/local models (`ollama`) that need heavy
+scaffolding to stay on track turn by turn.
 
 ## Async notes
 
