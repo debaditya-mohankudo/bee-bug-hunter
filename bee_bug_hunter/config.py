@@ -31,7 +31,12 @@ DEFAULT_OLLAMA_NUM_CTX = 16384
 DEFAULT_OPENAI_MODEL = "gpt-4o"
 DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-5"
 DEFAULT_CLAUDE_CLI_MODEL = "sonnet"
-DEFAULT_COPILOT_CLI_MODEL = "claude-sonnet-4.5"
+# "auto" lets Copilot CLI pick the model itself -- verified empirically (see
+# copilot_cli_llm.py's module docstring) to consistently resolve to a
+# non-premium model (gpt-5.3-codex, premiumRequests: 0) rather than burning
+# premium-request quota on every call the way an explicit "claude-sonnet-4.5"
+# or "kimi-k2.7-code" does.
+DEFAULT_COPILOT_CLI_MODEL = "auto"
 
 DEFAULT_LOG_FILE = "logs/bee_bug_hunter.jsonl"
 DEFAULT_LOG_LEVEL = "INFO"

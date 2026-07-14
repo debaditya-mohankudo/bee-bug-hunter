@@ -35,14 +35,16 @@ def test_first_call_mints_session_id_via_session_id_flag(mock_which):
     assert model._session_started is False
 
     events = [
-        {"type": "assistant.message", "data": {"content": "hello"}},
-        {"type": "result", "sessionId": "minted-123"},
+        {"type": "assistant.message", "data": {"content": "hello", "model": "gpt-5.3-codex"}},
+        {"type": "result", "sessionId": "minted-123", "usage": {"premiumRequests": 0}},
     ]
     with patch("bee_bug_hunter.copilot_cli_llm.subprocess.run", return_value=_fake_proc(events)) as mock_run:
-        text, session_id = model._invoke_cli("system framing", "do the thing")
+        text, session_id, resolved_model, premium_requests = model._invoke_cli("system framing", "do the thing")
 
     assert text == "hello"
     assert session_id == "minted-123"
+    assert resolved_model == "gpt-5.3-codex"
+    assert premium_requests == 0
     cmd = mock_run.call_args.args[0]
     assert "--session-id" in cmd
     assert "--resume" not in cmd
@@ -57,11 +59,11 @@ def test_known_session_resumes_via_resume_flag(mock_which):
         model="claude-sonnet-4.5", flow_key="demo", role_key="Bug Analyst", session_id="known-abc",
     )
     events = [
-        {"type": "assistant.message", "data": {"content": "continuing"}},
-        {"type": "result", "sessionId": "known-abc"},
+        {"type": "assistant.message", "data": {"content": "continuing", "model": "claude-sonnet-4.5"}},
+        {"type": "result", "sessionId": "known-abc", "usage": {"premiumRequests": 1}},
     ]
     with patch("bee_bug_hunter.copilot_cli_llm.subprocess.run", return_value=_fake_proc(events)) as mock_run:
-        text, session_id = model._invoke_cli("", "next turn")
+        text, session_id, _resolved_model, _premium_requests = model._invoke_cli("", "next turn")
 
     assert text == "continuing"
     cmd = mock_run.call_args.args[0]
@@ -79,7 +81,7 @@ def test_last_assistant_message_wins_over_earlier_turns(mock_which):
         {"type": "result", "sessionId": "sess-1"},
     ]
     with patch("bee_bug_hunter.copilot_cli_llm.subprocess.run", return_value=_fake_proc(events)):
-        text, _session_id = model._invoke_cli("", "prompt")
+        text, _session_id, _resolved_model, _premium_requests = model._invoke_cli("", "prompt")
 
     assert text == "final reply"
 
@@ -100,6 +102,24 @@ def test_no_assistant_message_event_raises(mock_which):
     with patch("bee_bug_hunter.copilot_cli_llm.subprocess.run", return_value=_fake_proc(events)):
         with pytest.raises(RuntimeError, match="no assistant.message"):
             model._invoke_cli("", "prompt")
+
+
+@patch("bee_bug_hunter.copilot_cli_llm.shutil.which", return_value="/usr/bin/copilot")
+def test_auto_model_reports_resolved_model_and_premium_requests(mock_which):
+    """model="auto" leaves self._model as the literal string "auto" -- the
+    caller needs the CLI's own per-event `model` field (and premiumRequests)
+    to know what actually ran and whether it cost quota."""
+    model = CopilotCLIChatModel(model="auto", flow_key="demo", role_key="Bug Analyst")
+    events = [
+        {"type": "assistant.message", "data": {"content": "hello", "model": "gpt-5.3-codex"}},
+        {"type": "result", "sessionId": "sess-auto", "usage": {"premiumRequests": 0}},
+    ]
+    with patch("bee_bug_hunter.copilot_cli_llm.subprocess.run", return_value=_fake_proc(events)):
+        _text, _session_id, resolved_model, premium_requests = model._invoke_cli("", "prompt")
+
+    assert model._model == "auto"
+    assert resolved_model == "gpt-5.3-codex"
+    assert premium_requests == 0
 
 
 @patch("bee_bug_hunter.copilot_cli_llm.shutil.which", return_value="/usr/bin/copilot")

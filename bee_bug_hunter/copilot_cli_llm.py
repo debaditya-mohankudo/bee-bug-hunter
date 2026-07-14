@@ -208,7 +208,9 @@ class CopilotCLIChatModel(ChatModel):
         tool_choice_str = "single" if hasattr(tool_choice, "name") else str(tool_choice)
         is_new_session = not self._session_started
         started = time.monotonic()
-        raw, returned_session_id = await asyncio.to_thread(self._invoke_cli, system_prompt, prompt)
+        raw, returned_session_id, resolved_model, premium_requests = await asyncio.to_thread(
+            self._invoke_cli, system_prompt, prompt,
+        )
         elapsed_ms = round((time.monotonic() - started) * 1000, 1)
         if self._session_id is None:
             self._session_id = returned_session_id
@@ -236,7 +238,8 @@ class CopilotCLIChatModel(ChatModel):
         if parsed and "tool" in parsed and input.tools:
             log(
                 logger, logging.INFO, "copilot_cli_call",
-                model=self._model, tool_choice=tool_choice_str, elapsed_ms=elapsed_ms,
+                model=self._model, resolved_model=resolved_model, premium_requests=premium_requests,
+                tool_choice=tool_choice_str, elapsed_ms=elapsed_ms,
                 outcome="tool_call", tool_name=parsed["tool"],
                 session_id=self._session_id, new_session=is_new_session, flow=self._flow_key,
             )
@@ -254,7 +257,8 @@ class CopilotCLIChatModel(ChatModel):
             outcome = "missed_required_tool_call"
         log(
             logger, logging.INFO if outcome == "text" else logging.WARNING, "copilot_cli_call",
-            model=self._model, tool_choice=tool_choice_str, elapsed_ms=elapsed_ms, outcome=outcome,
+            model=self._model, resolved_model=resolved_model, premium_requests=premium_requests,
+            tool_choice=tool_choice_str, elapsed_ms=elapsed_ms, outcome=outcome,
             session_id=self._session_id, new_session=is_new_session, flow=self._flow_key,
             **({"raw_preview": raw[:500]} if outcome == "missed_required_tool_call" else {}),
         )
@@ -267,13 +271,17 @@ class CopilotCLIChatModel(ChatModel):
     async def _create_stream(self, input: ChatModelInput, run) -> AsyncGenerator[ChatModelOutput]:
         yield await self._create(input, run)
 
-    def _invoke_cli(self, system_prompt: str, user_prompt: str) -> tuple[str, str]:
-        """Returns (result_text, session_id). No --append-system-prompt exists on
-        this CLI (see module docstring), so system_prompt and user_prompt are
-        folded into one combined -p argument here rather than split across a
-        flag and stdin. --session-id mints a fresh session on first call for
-        this role; --resume continues an already-known one (this process or a
-        persisted prior one)."""
+    def _invoke_cli(self, system_prompt: str, user_prompt: str) -> tuple[str, str, str, int | None]:
+        """Returns (result_text, session_id, resolved_model, premium_requests).
+        resolved_model/premium_requests come straight off the CLI's own JSONL
+        event stream -- mainly useful when self._model == "auto", since our own
+        model= log field would otherwise just say the literal string "auto"
+        forever with no way to tell which model actually ran. No
+        --append-system-prompt exists on this CLI (see module docstring), so
+        system_prompt and user_prompt are folded into one combined -p argument
+        here rather than split across a flag and stdin. --session-id mints a
+        fresh session on first call for this role; --resume continues an
+        already-known one (this process or a persisted prior one)."""
         combined_prompt = f"{system_prompt}\n\n{user_prompt}" if system_prompt else user_prompt
 
         cmd = [
@@ -296,6 +304,8 @@ class CopilotCLIChatModel(ChatModel):
 
         result_text = None
         session_id = self._session_id
+        resolved_model = self._model
+        premium_requests = None
         for line in proc.stdout.splitlines():
             line = line.strip()
             if not line:
@@ -311,9 +321,17 @@ class CopilotCLIChatModel(ChatModel):
                 # any, shows up as *prose inside* this same content, not a
                 # separate real tool-execution event -- see module docstring).
                 result_text = event["data"]["content"]
+                # Only meaningful when self._model == "auto": the CLI's own
+                # per-message `model` field reports what it actually resolved
+                # to (e.g. "gpt-5.3-codex"), which the JSONL log needs -- our
+                # own model= field would otherwise just say the literal
+                # string "auto" forever, useless for telling which model
+                # actually ran a given call.
+                resolved_model = event["data"].get("model", resolved_model)
             elif event.get("type") == "result":
                 session_id = event.get("sessionId", session_id)
+                premium_requests = event.get("usage", {}).get("premiumRequests")
 
         if result_text is None:
             raise RuntimeError(f"copilot CLI produced no assistant.message event: {proc.stdout[:500]}")
-        return result_text, session_id
+        return result_text, session_id, resolved_model, premium_requests
