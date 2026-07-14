@@ -27,7 +27,7 @@ flowchart TD
     KI[("known_issues registry<br/>notes from earlier flows this pass")]
     M["Investigation Manager<br/>(handoff-only supervisor)"]
     FR["API Flow Runner<br/>Playwright / requests"]
-    LC["Docker Log Capturer<br/>docker logs --since 5m<br/>(only after FR)"]
+    LC["Docker Log Capturer<br/>docker logs --since &lt;3x flow duration, min 60s&gt;<br/>(only after FR)"]
     DB["DB Query Agent<br/>read-only SQL from logs"]
     BA["Bug Analyst<br/>root-cause synthesis"]
     SP["SQL Performance Agent<br/>EXPLAIN-backed fix"]
