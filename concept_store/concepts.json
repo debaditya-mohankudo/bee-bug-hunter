@@ -1,568 +1,575 @@
 {
-  "agents-six-worker-roster": {
-    "confidence": 0.96,
-    "contracts": [
-      "build_agents() returns a dict keyed flow_runner/log_capturer/db_query_agent/bug_analyzer/sql_performance_agent/source_code_analyst — manager.py's handoff and requirement wiring depends on these exact keys"
-    ],
-    "created_at": "2026-07-14T15:23:50.319890+00:00",
-    "description": "build_agents() constructs the six worker RequirementAgents (API Flow Runner, Docker Log Capturer, DB Query Agent, Bug Analyst, SQL Performance Agent, Source Code Analyst), each with its own tools and its own LoggingMemory — private per-agent memory, not shared with the manager or each other. The Bug Analyst is forced to call check_anomalies at step 1 via ConditionalRequirement(force_at_step=1).",
-    "evidence": [
-      "bee_bug_hunter/agents.py:19-142",
-      "bee_bug_hunter/agents.py:101"
-    ],
-    "invariants": [
-      "Each worker gets its own get_chat_model(role=...) call rather than one shared llm — required so CLI-shelling providers give each role its own session singleton and workers don't bleed into one shared session",
-      "docker_host/mysql_cfg are per-flow manifest overrides; None means 'use .env defaults'"
-    ],
-    "last_validated": "2026-07-14T15:23:50.319890+00:00",
-    "module": "bee_bug_hunter/agents.py",
-    "name": "agents-six-worker-roster"
+  "concepts": {
+    "agents-six-worker-roster": {
+      "confidence": 0.96,
+      "contracts": [
+        "build_agents() returns a dict keyed flow_runner/log_capturer/db_query_agent/bug_analyzer/sql_performance_agent/source_code_analyst — manager.py's handoff and requirement wiring depends on these exact keys"
+      ],
+      "created_at": "2026-07-14T15:23:50.319890+00:00",
+      "description": "build_agents() constructs the six worker RequirementAgents (API Flow Runner, Docker Log Capturer, DB Query Agent, Bug Analyst, SQL Performance Agent, Source Code Analyst), each with its own tools and its own LoggingMemory — private per-agent memory, not shared with the manager or each other. The Bug Analyst is forced to call check_anomalies at step 1 via ConditionalRequirement(force_at_step=1).",
+      "evidence": [
+        "bee_bug_hunter/agents.py:19-142",
+        "bee_bug_hunter/agents.py:101"
+      ],
+      "invariants": [
+        "Each worker gets its own get_chat_model(role=...) call rather than one shared llm — required so CLI-shelling providers give each role its own session singleton and workers don't bleed into one shared session",
+        "docker_host/mysql_cfg are per-flow manifest overrides; None means 'use .env defaults'"
+      ],
+      "last_validated": "2026-07-14T15:23:50.319890+00:00",
+      "module": "bee_bug_hunter/agents.py",
+      "name": "agents-six-worker-roster"
+    },
+    "agents-static-roster-metadata": {
+      "confidence": 0.95,
+      "contracts": [
+        "Returns list[dict] with 'role' and 'goal' keys for all seven roles including the manager"
+      ],
+      "created_at": "2026-07-14T15:23:50.320227+00:00",
+      "description": "AGENT_SUMMARIES is static role/goal metadata kept separate from build_agents() so listing the roster (the TUI home screen) never requires a configured LLM provider.",
+      "evidence": [
+        "bee_bug_hunter/agents.py:145-180"
+      ],
+      "invariants": [
+        "agent_summaries() must stay side-effect free — no LLM construction, no env reads"
+      ],
+      "last_validated": "2026-07-14T15:23:50.320227+00:00",
+      "module": "bee_bug_hunter/agents.py",
+      "name": "agents-static-roster-metadata"
+    },
+    "anomaly-detector-deterministic-routing": {
+      "confidence": 0.97,
+      "contracts": [
+        "AnomalySignals.to_dict() has the stable keys bug_signal/perf_signal/http_errors/failed_steps/error_containers/slow_containers — known_issues.compute_fingerprint and reports.py both consume it"
+      ],
+      "created_at": "2026-07-14T15:23:50.323505+00:00",
+      "description": "Plain-code (non-LLM) anomaly detection over raw flow/log JSON, kept deterministic so routing is cheap, predictable, and testable. HTTP >=400 responses, failed steps, or ERROR/Exception/Traceback/FATAL log lines set bug_signal (Bug Analyst); any '<n> ms' duration >= 500ms sets perf_signal (SQL Performance Agent).",
+      "evidence": [
+        "bee_bug_hunter/anomaly_detector.py:11-13",
+        "bee_bug_hunter/anomaly_detector.py:36-71"
+      ],
+      "invariants": [
+        "detect() never raises on malformed input — unparseable JSON degrades to empty dicts and clean signals",
+        "SLOW_QUERY_MS_THRESHOLD is 500ms; slow_containers is deduplicated and sorted"
+      ],
+      "last_validated": "2026-07-14T15:23:50.323505+00:00",
+      "module": "bee_bug_hunter/anomaly_detector.py",
+      "name": "anomaly-detector-deterministic-routing"
+    },
+    "anomaly-tool-heuristic-not-gate": {
+      "confidence": 0.94,
+      "contracts": [
+        "Returns repr() of AnomalySignals.to_dict() over the two raw JSON inputs"
+      ],
+      "created_at": "2026-07-14T15:23:50.330414+00:00",
+      "description": "AnomalyCheckTool wraps the deterministic anomaly_detector as a tool for the Bug Analyst — a cheap first-pass hint, not a verdict or gate. The analyst is forced to call it at step 1 (agents.py's force_at_step=1) but is free to disagree with its output.",
+      "evidence": [
+        "bee_bug_hunter/tools/anomaly_tool.py:1-31",
+        "bee_bug_hunter/agents.py:101"
+      ],
+      "invariants": [
+        "The tool description must keep framing the result as a heuristic hint so the analyst still judges the raw output itself"
+      ],
+      "last_validated": "2026-07-14T15:23:50.330414+00:00",
+      "module": "bee_bug_hunter/tools/anomaly_tool.py",
+      "name": "anomaly-tool-heuristic-not-gate"
+    },
+    "api-flows-registry-shape-parity": {
+      "confidence": 0.96,
+      "contracts": [],
+      "created_at": "2026-07-14T15:23:50.329726+00:00",
+      "description": "API_FLOW_REGISTRY holds Python/requests flow functions registered via the @api_flow(name) decorator — the browserless alternative to YAML/Playwright flows. Each function takes no arguments and returns a dict shaped exactly like PlaywrightFlowTool's output ({flow_name, step_results, network_log}), so anomaly_detector and everything downstream of the Flow Runner work unmodified regardless of which tool ran the flow. ApiRequestFlowTool looks the name up, runs it via asyncio.to_thread, and returns {'error': ...} JSON for unknown names or raised exceptions.",
+      "evidence": [
+        "bee_bug_hunter/api_flows.py:1-26",
+        "bee_bug_hunter/tools/api_request_tool.py:35-55"
+      ],
+      "invariants": [
+        "Registered functions must preserve the canonical output shape — shape parity is the whole contract",
+        "The registry name is what both manifest.yaml's api_flow: key and ApiRequestFlowTool's flow_name argument refer to"
+      ],
+      "last_validated": "2026-07-14T15:23:50.329726+00:00",
+      "module": "bee_bug_hunter/api_flows.py",
+      "name": "api-flows-registry-shape-parity"
+    },
+    "claude-cli-root-fork-session-topology": {
+      "confidence": 0.95,
+      "contracts": [
+        "_create() converts a {\"final_answer\": ...} reply on a required-tool turn into a final_answer tool call locally instead of failing and paying for a retry (the dominant missed_required_tool_call shape was well-formed final answers)",
+        "missed_required_tool_call outcomes are logged with a raw_preview to distinguish 'never attempted' from 'attempted but unparseable'"
+      ],
+      "created_at": "2026-07-14T15:23:50.331809+00:00",
+      "description": "ClaudeCLIChatModel shells to `claude -p --safe-mode --tools none` per reasoning step, reusing the caller's Claude Code OAuth login. Prompt caching comes from session topology: one shared role-agnostic 'root' session per flow (generic framing, no tool schemas), each role forking its own session off it on first call (--resume <root> --fork-session) and resuming its own fork thereafter, sending only messages appended since the previous call. Not one shared session across roles: each role's system prompt carries a different tool schema, and mixing them would leave stale schemas in shared history.",
+      "evidence": [
+        "bee_bug_hunter/claude_cli_llm.py:12-31",
+        "bee_bug_hunter/claude_cli_llm.py:183-216",
+        "bee_bug_hunter/claude_cli_llm.py:309-327",
+        "bee_bug_hunter/claude_cli_llm.py:373-398"
+      ],
+      "invariants": [
+        "Per-(flow, role) singleton instances (_instances + for_role()) are what make clone()-returns-self safe — HandoffTool clones the agent's llm on every delegation, which would otherwise cold-start a session per delegation",
+        "A role's session_id is persisted to disk (.claude_cli_sessions.json) the moment the CLI assigns it, so restarts resume rather than orphan sessions",
+        "A sessionless subprocess per call has no prefix for Anthropic's prompt cache to hit — the pre-session design was cold every call"
+      ],
+      "last_validated": "2026-07-14T15:23:50.331809+00:00",
+      "module": "bee_bug_hunter/claude_cli_llm.py",
+      "name": "claude-cli-root-fork-session-topology"
+    },
+    "cli-session-crash-recovery-clearing": {
+      "confidence": 0.95,
+      "contracts": [],
+      "created_at": "2026-07-14T15:23:50.332408+00:00",
+      "description": "clear_persisted_sessions() (mirrored in copilot_cli_llm.py) wipes the on-disk session store and in-memory instances at the top of every run_batch_once pass. A killed run — or simply a prior poll cycle in continuous mode — leaves a CLI-side session history ahead of BeeAI's always-fresh in-memory RequirementAgentRunState: the manager's session 'remembers' a completed flow_runner call, tries to skip to log_capturer, and gets structurally rejected by ConditionalRequirement with no clean recovery. Clearing is chosen over reconciling the two states on the fly.",
+      "evidence": [
+        "bee_bug_hunter/claude_cli_llm.py:109-124",
+        "bee_bug_hunter/copilot_cli_llm.py:111-119",
+        "bee_bug_hunter/orchestrator.py:151-166"
+      ],
+      "invariants": [
+        "Both CLI providers must be cleared per batch pass, not just at process startup — the cache otherwise survives poll cycles within one process"
+      ],
+      "last_validated": "2026-07-14T15:23:50.332408+00:00",
+      "module": "bee_bug_hunter/claude_cli_llm.py",
+      "name": "cli-session-crash-recovery-clearing"
+    },
+    "cli-text-bridge-protocol": {
+      "confidence": 0.96,
+      "contracts": [
+        "flatten_messages() returns (system_prompt, conversation_prompt); callers pass only messages new since the last invocation once a session is underway",
+        "Two 'required' instruction variants exist because BeeAI's 'required' usually still allows finishing via the final_answer tool — forbidding final_answer outright punished models for legitimately being done (the dominant missed-call failure mode was well-formed final_answer JSON)"
+      ],
+      "created_at": "2026-07-14T15:23:50.330977+00:00",
+      "description": "The CLI-agnostic half of the hand-rolled tool-calling bridge shared by claude_cli_llm.py and copilot_cli_llm.py: tool schemas are described in prompt text, the model replies with {\"tool\": ..., \"args\": {...}} or {\"final_answer\": ...} JSON, and the backends translate that into native MessageToolCallContent so BeeAI's own loop executes tools. Holds the protocol/instruction constants, JSON extraction, tool description, and message flattening.",
+      "evidence": [
+        "bee_bug_hunter/cli_tool_protocol.py:44-60",
+        "bee_bug_hunter/cli_tool_protocol.py:63-138",
+        "bee_bug_hunter/cli_tool_protocol.py:154-177"
+      ],
+      "invariants": [
+        "extract_json_object prefers protocol-shaped candidates (has 'tool' or 'final_answer') over 'first span that parses' — prose often quotes valid JSON of its own (e.g. HTTP error bodies)",
+        "Balanced-brace scanning (string/escape aware) replaced the greedy first-{-to-last-} regex that silently blobbed responses containing quoted braces",
+        "Last resort is beeai_framework's own parse_broken_json repair, accepted only if protocol-shaped"
+      ],
+      "last_validated": "2026-07-14T15:23:50.330977+00:00",
+      "module": "bee_bug_hunter/cli_tool_protocol.py",
+      "name": "cli-text-bridge-protocol"
+    },
+    "config-shared-constants": {
+      "confidence": 0.96,
+      "contracts": [
+        "Modules import these constants instead of re-declaring locally"
+      ],
+      "created_at": "2026-07-14T15:23:50.334732+00:00",
+      "description": "Single home for constants shared across main.py, tui.py, manager.py, and orchestrator.py: manifest path, DEFAULT_FLOW_KIND, per-provider model defaults and their env-var names (LLM_MODEL_ENV_VAR, used by the TUI's config panel), session-store paths, reports dir, and APP_DB_CONN/APP_DOCKER_CONN fallbacks.",
+      "evidence": [
+        "bee_bug_hunter/config.py:1-71"
+      ],
+      "invariants": [
+        "Real credentials (OPENAI_API_KEY, ANTHROPIC_API_KEY, MySQL password) stay .env-only and never get a default here",
+        "APP_DOCKER_CONN['host'] = 'local' is purely a display label, never passed to Docker"
+      ],
+      "last_validated": "2026-07-14T15:23:50.334732+00:00",
+      "module": "bee_bug_hunter/config.py",
+      "name": "config-shared-constants"
+    },
+    "copilot-cli-capability-gaps": {
+      "confidence": 0.95,
+      "contracts": [
+        "The last assistant.message event in the JSONL stream is the model's final reply for the call"
+      ],
+      "created_at": "2026-07-14T15:23:50.333967+00:00",
+      "description": "CopilotCLIChatModel is the same text-bridge idea shelled to `copilot -p`, with two capability gaps worked around: (1) no `--tools none` equivalent — tool execution is genuinely prevented only by `--excluded-tools=<every built-in tool name>` plus `--disable-builtin-mcps` (an empty `--available-tools=` alone was verified NOT to stop real shell execution; excluded-tool hallucinations show up as prose the JSON protocol parser ignores); (2) no `--append-system-prompt`/`--fork-session` — system+user text fold into one combined -p argument and each role's session starts cold rather than forking from a shared root, keeping only per-role --resume reuse.",
+      "evidence": [
+        "bee_bug_hunter/copilot_cli_llm.py:15-33",
+        "bee_bug_hunter/copilot_cli_llm.py:66-77",
+        "bee_bug_hunter/copilot_cli_llm.py:274-337"
+      ],
+      "invariants": [
+        "_EXCLUDED_TOOLS must track the CLI's full built-in tool list — any tool missing from it is executable on this host",
+        "resolved_model/premium_requests are read off the CLI's JSONL event stream because with model='auto' our own model= field would just log the literal string 'auto' forever"
+      ],
+      "last_validated": "2026-07-14T15:23:50.333967+00:00",
+      "module": "bee_bug_hunter/copilot_cli_llm.py",
+      "name": "copilot-cli-capability-gaps"
+    },
+    "delegation-capture-worker-output": {
+      "confidence": 0.96,
+      "contracts": [
+        "get_by_role(run_id, role) concatenates every result from repeat delegations with '---' separators, and returns None (not '') when the role was never delegated to — callers can distinguish 'not invoked' from 'invoked but silent'"
+      ],
+      "created_at": "2026-07-14T15:23:50.322189+00:00",
+      "description": "CapturingHandoffTool (HandoffTool subclass) records each worker's own returned text keyed by the run_id contextvar, because the manager's final answer is a synthesized summary, not the workers' raw output. This is how the orchestrator/TUI get the Bug Analyst / SQL Performance report text independent of what the manager chose to quote.",
+      "evidence": [
+        "bee_bug_hunter/delegation_capture.py:47-83"
+      ],
+      "invariants": [
+        "Role lookup is whitespace/underscore/case-insensitive (_normalize_role) so 'API Flow Runner' matches HandoffTool's derived safe-word name 'api_flow_runner'",
+        "Registry access is guarded by a threading.Lock; entries live only until orchestrator clears the run_id"
+      ],
+      "last_validated": "2026-07-14T15:23:50.322189+00:00",
+      "module": "bee_bug_hunter/delegation_capture.py",
+      "name": "delegation-capture-worker-output"
+    },
+    "docker-log-since-window": {
+      "confidence": 0.96,
+      "contracts": [
+        "Returns JSON {container: {log_path, content}} — the shape anomaly_detector iterates over for error/slow-line scanning"
+      ],
+      "created_at": "2026-07-14T15:23:50.327566+00:00",
+      "description": "DockerLogCaptureTool runs `docker logs -f --since <window>s` per container into .captures/ files, waits duration_seconds, SIGTERMs, and returns the last 8000 chars per container. The --since lookback is derived from the flow's own duration (duration * 3, floored at 60s), not 0s or a flat constant: workers run sequentially, so the flow's output predates capture start, and long flows need proportionally longer lookback.",
+      "evidence": [
+        "bee_bug_hunter/tools/docker_log_tool.py:19-33",
+        "bee_bug_hunter/tools/docker_log_tool.py:42-94"
+      ],
+      "invariants": [
+        "--since must never be 0s while delegation stays sequential — 'from now on' would miss everything the flow already emitted",
+        "A docker_host override sets DOCKER_HOST only in the subprocess env; None means the ambient docker context"
+      ],
+      "last_validated": "2026-07-14T15:23:50.327566+00:00",
+      "module": "bee_bug_hunter/tools/docker_log_tool.py",
+      "name": "docker-log-since-window"
+    },
+    "known-issues-batch-pass-registry": {
+      "confidence": 0.96,
+      "contracts": [
+        "compute_fingerprint() is a readable sorted pipe-joined string (not a hash) over http/errlog/slow signals; 'clean' means no signals",
+        "note_for(registry) returns None for an empty registry, else one string covering all recorded entries"
+      ],
+      "created_at": "2026-07-14T15:23:50.324155+00:00",
+      "description": "In-memory registry of issues confirmed earlier in the same run_batch_once pass, so a later flow's manager gets told 'flow X found this a moment ago' — context only, never a skip. Deliberately not indexed by container (container overlap is an unreliable relevance signal; the manager decides relevance itself) and deliberately never persisted across poll cycles (the demo app's source isn't git-checkpointed, so code can't be assumed unchanged between runs).",
+      "evidence": [
+        "bee_bug_hunter/known_issues.py:1-20",
+        "bee_bug_hunter/known_issues.py:28-53"
+      ],
+      "invariants": [
+        "record_issue() is the only place entries are added, and it logs at the append itself so JSONL line order is the true chronology",
+        "An issue is only recorded when compute_fingerprint(anomaly) != 'clean' — LLM prose alone can't create a known issue"
+      ],
+      "last_validated": "2026-07-14T15:23:50.324155+00:00",
+      "module": "bee_bug_hunter/known_issues.py",
+      "name": "known-issues-batch-pass-registry"
+    },
+    "llm-provider-switch": {
+      "confidence": 0.96,
+      "contracts": [
+        "Always returns a beeai_framework ChatModel"
+      ],
+      "created_at": "2026-07-14T15:23:50.320561+00:00",
+      "description": "get_chat_model() is the single provider abstraction: LLM_PROVIDER env var selects ollama (default) / openai / anthropic / claude_cli / copilot_cli. role/flow_name/containers only matter to the CLI-shelling providers' per-(flow, role) session singletons; every other provider constructs fresh per call and ignores them.",
+      "evidence": [
+        "bee_bug_hunter/llm.py:32-75"
+      ],
+      "invariants": [
+        "Unknown LLM_PROVIDER values raise ValueError rather than silently defaulting",
+        "Model-name defaults come from config.py constants; real credentials stay .env-only with no default"
+      ],
+      "last_validated": "2026-07-14T15:23:50.320561+00:00",
+      "module": "bee_bug_hunter/llm.py",
+      "name": "llm-provider-switch"
+    },
+    "llm-sequential-tool-calls-guarantee": {
+      "confidence": 0.97,
+      "contracts": [],
+      "created_at": "2026-07-14T15:23:50.320879+00:00",
+      "description": "Every provider is constructed with allow_parallel_tool_calls=False. This flag — not async-vs-sync tool execution — is the actual guarantee that the manager's sequential-delegation design holds: if a model requested two handoffs in one turn, BeeAI's run_tools() would execute them concurrently via asyncio.gather (e.g. Docker Log Capturer starting before the Flow Runner produced anything to capture).",
+      "evidence": [
+        "bee_bug_hunter/llm.py:20-29",
+        "bee_bug_hunter/claude_cli_llm.py:245-258"
+      ],
+      "invariants": [
+        "_SEQUENTIAL_TOOL_CALLS must be passed to every provider constructed in get_chat_model(), including new ones, even providers structurally incapable of >1 tool call per turn (belt-and-suspenders)",
+        "ClaudeCLIChatModel.clone() returning self is only safe because delegations are sequential — concurrent same-role delegations would race on _sent_message_count/_session_started"
+      ],
+      "last_validated": "2026-07-14T15:23:50.320879+00:00",
+      "module": "bee_bug_hunter/llm.py",
+      "name": "llm-sequential-tool-calls-guarantee"
+    },
+    "logging-jsonl-run-id-contextvar": {
+      "confidence": 0.97,
+      "contracts": [
+        "new_run_context() returns a 12-hex run_id and sets run_id/flow contextvars; grep '\"run_id\": \"<id>\"' reconstructs one run end to end"
+      ],
+      "created_at": "2026-07-14T15:23:50.324534+00:00",
+      "description": "All logging is single-line JSON (stdout always, plus rotating logs/bee_bug_hunter.jsonl) with run_id and flow carried by contextvars rather than threaded-through parameters — tool _run() methods are invoked by BeeAI's runtime, which doesn't allow extra args, and BeeAI's asyncio loop propagates contextvars across awaits. new_run_context(flow_name) is called once per flow run to scope everything downstream.",
+      "evidence": [
+        "bee_bug_hunter/logging_config.py:19-20",
+        "bee_bug_hunter/logging_config.py:68-79"
+      ],
+      "invariants": [
+        "Every log line is one JSON object (aggregator-friendly); structured fields ride in extra={'extra_fields': ...} via the log() helper",
+        "This module deliberately replaces beeai_framework.logger, which lacks JSON output, rotation, and run correlation — revisit only if BeeAI's Logger gains structured output"
+      ],
+      "last_validated": "2026-07-14T15:23:50.324534+00:00",
+      "module": "bee_bug_hunter/logging_config.py",
+      "name": "logging-jsonl-run-id-contextvar"
+    },
+    "logging-memory-context-visibility": {
+      "confidence": 0.95,
+      "contracts": [
+        "Emits memory_message_added / memory_message_removed / memory_reset events with role, 200-char preview, and memory_size"
+      ],
+      "created_at": "2026-07-14T15:23:50.324927+00:00",
+      "description": "LoggingMemory (UnconstrainedMemory subclass) logs every message added/removed/reset in an agent's context into the same JSONL stream, tagged with the agent name and ambient run_id — otherwise 'what actually went into an agent's context' is only inspectable with a debugger. Previews render tool calls/results by content type because message.text is empty for them.",
+      "evidence": [
+        "bee_bug_hunter/logging_memory.py:45-81"
+      ],
+      "invariants": [
+        "add_many() funnels through add() in BaseMemory, so overriding add/delete/reset covers every mutation path",
+        "clone() must return a LoggingMemory preserving agent_name (HandoffTool clones worker memory on delegation)"
+      ],
+      "last_validated": "2026-07-14T15:23:50.324927+00:00",
+      "module": "bee_bug_hunter/logging_memory.py",
+      "name": "logging-memory-context-visibility"
+    },
+    "manager-conditional-ordering": {
+      "confidence": 0.97,
+      "contracts": [
+        "requirements= on the supervisor guarantees delegation order regardless of what the LLM tries to call"
+      ],
+      "created_at": "2026-07-14T15:23:50.319260+00:00",
+      "description": "Worker sequencing is enforced structurally via ConditionalRequirement(only_after=...), not by trusting the prompt: log_capturer only after flow_runner, and db_query_agent / bug_analyzer / sql_performance_agent / source_code_analyst only after log_capturer, because those four are handed 'the logs from step 2' which would otherwise not exist.",
+      "evidence": [
+        "bee_bug_hunter/manager.py:49-62"
+      ],
+      "invariants": [
+        "Docker Log Capturer must never be delegatable before the Flow Runner has run — its --since lookback window is a hedge for already-emitted output, not a substitute for real ordering",
+        "Any new worker that consumes captured logs must get its own ConditionalRequirement(only_after=handoffs['log_capturer'])"
+      ],
+      "last_validated": "2026-07-14T15:23:50.319260+00:00",
+      "module": "bee_bug_hunter/manager.py",
+      "name": "manager-conditional-ordering"
+    },
+    "manager-delegation-only-supervisor": {
+      "confidence": 0.97,
+      "contracts": [
+        "build_supervisor(flow_name, containers, duration_seconds, ...) returns (RequirementAgent, prompt) ready for supervisor.run(prompt)",
+        "The final answer begins with a 'SUMMARY: <one sentence>' line (root cause or 'clean') that orchestrator.py parses via _SUMMARY_LINE_PATTERN"
+      ],
+      "created_at": "2026-07-14T15:23:50.318482+00:00",
+      "description": "The Investigation Manager is a RequirementAgent whose tool list contains only CapturingHandoffTools targeting the six workers — the 'manager only delegates' rule is structural (it has no domain tools to misuse), unlike CrewAI's hierarchical-process agent= gotcha this port replaced. Cross-delegation context comes free from HandoffTool propagating the conversation-so-far into each worker's memory.",
+      "evidence": [
+        "bee_bug_hunter/manager.py:40-82",
+        "bee_bug_hunter/manager.py:104-125",
+        "bee_bug_hunter/orchestrator.py:22"
+      ],
+      "invariants": [
+        "The supervisor's tools= must remain exclusively HandoffTool subclasses — adding a domain tool would break the structural delegation-only guarantee",
+        "Every fact in the manager's final report must come from a worker's real delegated output; the prompt forbids fabricating evidence"
+      ],
+      "last_validated": "2026-07-14T15:23:50.318482+00:00",
+      "module": "bee_bug_hunter/manager.py",
+      "name": "manager-delegation-only-supervisor"
+    },
+    "manager-flow-kind-selects-runner-tool": {
+      "confidence": 0.95,
+      "contracts": [
+        "A known_issue_note, when passed, is prepended as context-only framing — the prompt explicitly instructs the manager to re-investigate from real evidence, never to skip"
+      ],
+      "created_at": "2026-07-14T15:23:50.319596+00:00",
+      "description": "flow_kind ('ui' default vs 'api') only changes which tool the manager tells the Flow Runner to use: run_playwright_flow with flows/<flow_name>.yaml, or run_api_flow with a registered api_flows.py function name (api_flow_name). Both tools return identically shaped JSON so everything downstream is unaffected.",
+      "evidence": [
+        "bee_bug_hunter/manager.py:84-102",
+        "bee_bug_hunter/config.py:9"
+      ],
+      "invariants": [
+        "DEFAULT_FLOW_KIND lives in config.py and is read by both build_supervisor's parameter default and orchestrator's flow_cfg.get('kind', ...)"
+      ],
+      "last_validated": "2026-07-14T15:23:50.319596+00:00",
+      "module": "bee_bug_hunter/manager.py",
+      "name": "manager-flow-kind-selects-runner-tool"
+    },
+    "mysql-schema-introspection-cache": {
+      "confidence": 0.96,
+      "contracts": [],
+      "created_at": "2026-07-14T15:23:50.326874+00:00",
+      "description": "A module-level UnconstrainedCache shared by every MySQLQueryTool instance (DB Query Agent's and SQL Performance Agent's, across all flows in a batch pass) caches schema-introspection results — EXPLAIN, SHOW COLUMNS/TABLES/INDEX/CREATE TABLE, DESCRIBE — because plan/schema shape is driven by schema state, not live row content. Plain SELECTs deliberately bypass it since row data can legitimately change mid-investigation.",
+      "evidence": [
+        "bee_bug_hunter/tools/mysql_tool.py:23-52",
+        "bee_bug_hunter/tools/mysql_tool.py:124-140"
+      ],
+      "invariants": [
+        "Cache key includes resolved host:port/database, not just query text — two flows EXPLAINing the same query against different DBs must not collide",
+        "Only successful (error-free) results are cached",
+        "clear_schema_cache() rebinds a fresh instance (sync-callable) and must run at the top of every run_batch_once pass"
+      ],
+      "last_validated": "2026-07-14T15:23:50.326874+00:00",
+      "module": "bee_bug_hunter/tools/mysql_tool.py",
+      "name": "mysql-schema-introspection-cache"
+    },
+    "mysql-tool-read-only-gate": {
+      "confidence": 0.97,
+      "contracts": [
+        "Returns JSON {query, row_count, rows} on success or {query, error} / {error} on failure — never raises to the agent loop"
+      ],
+      "created_at": "2026-07-14T15:23:50.326375+00:00",
+      "description": "MySQLQueryTool rejects INSERT/UPDATE/DELETE/DROP/ALTER/TRUNCATE/CREATE via a leading-keyword regex and returns {'error': 'refused: ...'} instead of executing; EXPLAIN/SHOW/DESCRIBE pass. Connection fields resolve per-flow override -> MYSQL_* env var -> APP_DB_CONN fallback. Results are capped at fetchmany(200).",
+      "evidence": [
+        "bee_bug_hunter/tools/mysql_tool.py:18",
+        "bee_bug_hunter/tools/mysql_tool.py:96-122"
+      ],
+      "invariants": [
+        "Row contents may hold customer/PII data — logs carry query text, row count, and timing ONLY, never row values",
+        "Write rejection happens before any connection is opened"
+      ],
+      "last_validated": "2026-07-14T15:23:50.326375+00:00",
+      "module": "bee_bug_hunter/tools/mysql_tool.py",
+      "name": "mysql-tool-read-only-gate"
+    },
+    "orchestrator-batch-pass-resets": {
+      "confidence": 0.96,
+      "contracts": [
+        "Returns list of run_flow_once report dicts for the flows that succeeded"
+      ],
+      "created_at": "2026-07-14T15:23:50.321543+00:00",
+      "description": "run_batch_once resets all cross-flow caches at the top of every batch pass: CLI provider persisted sessions (claude_cli/copilot_cli), the module-level MySQL schema-introspection cache, and read_source_tool's docker-cp scratch copies. Rationale is uniform: nothing may assume a fresh poll cycle's schema/sessions/container source are unchanged from the last one. A fresh in-memory known_issues list is created per pass and discarded at the end.",
+      "evidence": [
+        "bee_bug_hunter/orchestrator.py:148-201"
+      ],
+      "invariants": [
+        "clear_persisted_sessions / clear_schema_cache / clear_scratch_cache must be called before any flow of the pass runs",
+        "One flow's failure never aborts the batch — FrameworkError and Exception are both caught per-flow and logged as flow_run_skipped_after_failure"
+      ],
+      "last_validated": "2026-07-14T15:23:50.321543+00:00",
+      "module": "bee_bug_hunter/orchestrator.py",
+      "name": "orchestrator-batch-pass-resets"
+    },
+    "orchestrator-flow-run-lifecycle": {
+      "confidence": 0.96,
+      "contracts": [
+        "Returns {flow, run_id, response, anomaly, bug_report, perf_report, report_path}; tui.py's Anomaly/Results screens consume exactly this shape"
+      ],
+      "created_at": "2026-07-14T15:23:50.321190+00:00",
+      "description": "run_flow_once is sync: it sets a fresh run_id contextvar via new_run_context(), builds the supervisor, and drives it with asyncio.run — which copies the current context, so the run_id is visible to every tool-level log line inside the supervisor's loop. After the run it assembles the report dict from tool_capture (raw JSON, preferred) falling back to delegation_capture (LLM prose), computes deterministic anomaly signals, saves a markdown report, and clears both capture registries.",
+      "evidence": [
+        "bee_bug_hunter/orchestrator.py:46-145"
+      ],
+      "invariants": [
+        "Anomaly signals are computed from the raw tool JSON recorded by tool_capture, never primarily from worker prose — delegation_capture output is a last-resort fallback only",
+        "delegation_capture.clear(run_id) and tool_capture.clear(run_id) run on every exit path, success and failure alike",
+        "supervisor.run() returns a BeeAI Run (awaitable, not a coroutine) and must be awaited inside a real coroutine for asyncio.run"
+      ],
+      "last_validated": "2026-07-14T15:23:50.321190+00:00",
+      "module": "bee_bug_hunter/orchestrator.py",
+      "name": "orchestrator-flow-run-lifecycle"
+    },
+    "orchestrator-framework-error-boundary": {
+      "confidence": 0.96,
+      "contracts": [
+        "_framework_error_fields(e) yields {error_type, is_fatal, is_retryable, error_chain} for JSONL grep"
+      ],
+      "created_at": "2026-07-14T15:23:50.321865+00:00",
+      "description": "FrameworkError adoption is scoped to the supervisor.run() boundary only: run_flow_once/run_batch_once catch FrameworkError before the generic Exception fallback and log error_type / is_fatal / is_retryable plus the full cause chain via error.explain() as structured JSONL fields. Worker tools deliberately do NOT raise ToolError — they return {'error': ...} so the LLM can see the failure and adapt within the run.",
+      "evidence": [
+        "bee_bug_hunter/orchestrator.py:27-38",
+        "bee_bug_hunter/orchestrator.py:82-101"
+      ],
+      "invariants": [
+        "Any future FrameworkError context= must stay query-shape-only (no row contents / PII), per the mysql logging rule",
+        "Tools must keep catching their own exceptions and returning {'error': ...} strings rather than raising, or a single tool failure would crash the whole supervisor loop"
+      ],
+      "last_validated": "2026-07-14T15:23:50.321865+00:00",
+      "module": "bee_bug_hunter/orchestrator.py",
+      "name": "orchestrator-framework-error-boundary"
+    },
+    "playwright-flow-yaml-steps": {
+      "confidence": 0.96,
+      "contracts": [
+        "Returns JSON {flow_name, step_results, network_log} — the canonical flow-output shape shared with run_api_flow"
+      ],
+      "created_at": "2026-07-14T15:23:50.328282+00:00",
+      "description": "PlaywrightFlowTool executes flows/<flow_name>.yaml step lists (goto, click, fill, wait_for_selector, wait_for_response, expect_status, expect_text) using Playwright's ASYNC API — required, not stylistic: BeeAI tools run inside the agent's asyncio loop and the sync Playwright API refuses to run with a loop already running. A response listener records every request/response; per-step failures are recorded, not raised, so later steps still run.",
+      "evidence": [
+        "bee_bug_hunter/tools/playwright_tool.py:1-5",
+        "bee_bug_hunter/tools/playwright_tool.py:56-112"
+      ],
+      "invariants": [
+        "Unknown actions record status 'skipped_unknown_action' instead of failing the flow",
+        "expect_status/expect_text raise AssertionError internally, which lands in that step's {'status': 'failed', 'error': ...} entry"
+      ],
+      "last_validated": "2026-07-14T15:23:50.328282+00:00",
+      "module": "bee_bug_hunter/tools/playwright_tool.py",
+      "name": "playwright-flow-yaml-steps"
+    },
+    "read-source-docker-cp-scratch": {
+      "confidence": 0.96,
+      "contracts": [
+        "Returns file content (possibly truncated with a line-count note) or an 'error: ...' string — never raises"
+      ],
+      "created_at": "2026-07-14T15:23:50.328780+00:00",
+      "description": "ReadSourceFileTool reads app source out of the running container itself (not a hardcoded local checkout — a real target may be remote with no local source): discovers the source root via `docker inspect` WorkingDir, copies it once per container with `docker cp` into a tempdir scratch cache, and serves reads from that copy, capped at 400 lines.",
+      "evidence": [
+        "bee_bug_hunter/tools/read_source_tool.py:34-58",
+        "bee_bug_hunter/tools/read_source_tool.py:83-99",
+        "bee_bug_hunter/tools/read_source_tool.py:102-108"
+      ],
+      "invariants": [
+        "Path traversal is blocked — the resolved target must stay under the container's copied source root",
+        "clear_scratch_cache() must run every batch pass: a container rebuilt with a real fix between poll cycles would otherwise be 'confirmed' buggy from stale cached source forever"
+      ],
+      "last_validated": "2026-07-14T15:23:50.328780+00:00",
+      "module": "bee_bug_hunter/tools/read_source_tool.py",
+      "name": "read-source-docker-cp-scratch"
+    },
+    "reports-markdown-per-run": {
+      "confidence": 0.95,
+      "contracts": [
+        "Returns the path written; consumes exactly run_flow_once's report dict shape"
+      ],
+      "created_at": "2026-07-14T15:23:50.335788+00:00",
+      "description": "save_report() persists one markdown file per flow run under reports/, named <utc-ts>_<flow>_<run_id>.md so runs sort chronologically and correlate with the JSONL log by run_id — without it the specialist findings would exist only in-memory or transiently in stdout.",
+      "evidence": [
+        "bee_bug_hunter/reports.py:11-43"
+      ],
+      "invariants": [
+        "Specialist sections (Bug Analyst / SQL Performance) take precedence; the manager's own summary is written only when neither specialist was escalated to"
+      ],
+      "last_validated": "2026-07-14T15:23:50.335788+00:00",
+      "module": "bee_bug_hunter/reports.py",
+      "name": "reports-markdown-per-run"
+    },
+    "tool-capture-raw-json-via-emitter": {
+      "confidence": 0.96,
+      "contracts": [
+        "get_flow_raw/get_log_raw return the MOST RECENT successful output for the run (a tool can run more than once; the last run reflects the state the report describes), or None if the tool never succeeded"
+      ],
+      "created_at": "2026-07-14T15:23:50.322863+00:00",
+      "description": "Subscribes once (idempotent install()) to BeeAI's root Emitter and records the unfiltered StringToolOutput of run_playwright_flow / run_api_flow (shared 'flow' slot) and capture_docker_logs ('logs' slot) on ToolSuccessEvent, keyed by run_id. Exists because anomaly_detector.detect() parses raw tool JSON, and worker delegation answers are LLM prose that usually isn't parseable JSON.",
+      "evidence": [
+        "bee_bug_hunter/tool_capture.py:25-29",
+        "bee_bug_hunter/tool_capture.py:36-65"
+      ],
+      "invariants": [
+        "install() is idempotent per process — orchestrator.py and tui.py both call it",
+        "Emitter callbacks fire synchronously inside the tool's own asyncio task, so the run_id contextvar is visible — the same correlation mechanism as JSONL logging",
+        "Both flow-runner tools must keep identically shaped output to legitimately share the 'flow' slot"
+      ],
+      "last_validated": "2026-07-14T15:23:50.322863+00:00",
+      "module": "bee_bug_hunter/tool_capture.py",
+      "name": "tool-capture-raw-json-via-emitter"
+    },
+    "tui-thread-and-logging-integration": {
+      "confidence": 0.94,
+      "contracts": [
+        "log_ui() routes every screen change / click / keypress into the same JSONL stream as flow-run events"
+      ],
+      "created_at": "2026-07-14T15:23:50.337028+00:00",
+      "description": "The Textual TUI runs run_flow_once in a worker thread (it's a blocking sync call that runs the supervisor's own asyncio loop internally, which must not share Textual's loop) and drives its live EventFeed by attaching a logging.Handler to the same JSONL-emitting log path — no changes to orchestrator.py needed. BEEAI_LOG_LEVEL=WARNING is set via os.environ BEFORE any beeai_framework import because BeeAI's Logger attaches a raw stdout StreamHandler at construction that bypasses both configure_logging() and Textual's alternate-screen rendering (stray stdout writes garble the terminal).",
+      "evidence": [
+        "bee_bug_hunter/tui.py:38-51",
+        "bee_bug_hunter/tui.py:17-27",
+        "bee_bug_hunter/tui.py:104-108"
+      ],
+      "invariants": [
+        "The BEEAI_LOG_LEVEL setdefault must stay above the bee_bug_hunter.* imports — CONFIG.log_level is read once at import time",
+        "Anomaly/Results screens read the anomaly/bug_report/perf_report keys of run_flow_once's return dict, sourced via delegation_capture",
+        "Every bordered content panel carries the shared '.panel' class; UI colors come from the module-level palette constants, never re-hardcoded hex"
+      ],
+      "last_validated": "2026-07-14T15:23:50.337028+00:00",
+      "module": "bee_bug_hunter/tui.py",
+      "name": "tui-thread-and-logging-integration"
+    }
   },
-  "agents-static-roster-metadata": {
-    "confidence": 0.95,
-    "contracts": [
-      "Returns list[dict] with 'role' and 'goal' keys for all seven roles including the manager"
-    ],
-    "created_at": "2026-07-14T15:23:50.320227+00:00",
-    "description": "AGENT_SUMMARIES is static role/goal metadata kept separate from build_agents() so listing the roster (the TUI home screen) never requires a configured LLM provider.",
-    "evidence": [
-      "bee_bug_hunter/agents.py:145-180"
-    ],
-    "invariants": [
-      "agent_summaries() must stay side-effect free — no LLM construction, no env reads"
-    ],
-    "last_validated": "2026-07-14T15:23:50.320227+00:00",
-    "module": "bee_bug_hunter/agents.py",
-    "name": "agents-static-roster-metadata"
-  },
-  "anomaly-detector-deterministic-routing": {
-    "confidence": 0.97,
-    "contracts": [
-      "AnomalySignals.to_dict() has the stable keys bug_signal/perf_signal/http_errors/failed_steps/error_containers/slow_containers — known_issues.compute_fingerprint and reports.py both consume it"
-    ],
-    "created_at": "2026-07-14T15:23:50.323505+00:00",
-    "description": "Plain-code (non-LLM) anomaly detection over raw flow/log JSON, kept deterministic so routing is cheap, predictable, and testable. HTTP >=400 responses, failed steps, or ERROR/Exception/Traceback/FATAL log lines set bug_signal (Bug Analyst); any '<n> ms' duration >= 500ms sets perf_signal (SQL Performance Agent).",
-    "evidence": [
-      "bee_bug_hunter/anomaly_detector.py:11-13",
-      "bee_bug_hunter/anomaly_detector.py:36-71"
-    ],
-    "invariants": [
-      "detect() never raises on malformed input — unparseable JSON degrades to empty dicts and clean signals",
-      "SLOW_QUERY_MS_THRESHOLD is 500ms; slow_containers is deduplicated and sorted"
-    ],
-    "last_validated": "2026-07-14T15:23:50.323505+00:00",
-    "module": "bee_bug_hunter/anomaly_detector.py",
-    "name": "anomaly-detector-deterministic-routing"
-  },
-  "anomaly-tool-heuristic-not-gate": {
-    "confidence": 0.94,
-    "contracts": [
-      "Returns repr() of AnomalySignals.to_dict() over the two raw JSON inputs"
-    ],
-    "created_at": "2026-07-14T15:23:50.330414+00:00",
-    "description": "AnomalyCheckTool wraps the deterministic anomaly_detector as a tool for the Bug Analyst — a cheap first-pass hint, not a verdict or gate. The analyst is forced to call it at step 1 (agents.py's force_at_step=1) but is free to disagree with its output.",
-    "evidence": [
-      "bee_bug_hunter/tools/anomaly_tool.py:1-31",
-      "bee_bug_hunter/agents.py:101"
-    ],
-    "invariants": [
-      "The tool description must keep framing the result as a heuristic hint so the analyst still judges the raw output itself"
-    ],
-    "last_validated": "2026-07-14T15:23:50.330414+00:00",
-    "module": "bee_bug_hunter/tools/anomaly_tool.py",
-    "name": "anomaly-tool-heuristic-not-gate"
-  },
-  "api-flows-registry-shape-parity": {
-    "confidence": 0.96,
-    "contracts": [],
-    "created_at": "2026-07-14T15:23:50.329726+00:00",
-    "description": "API_FLOW_REGISTRY holds Python/requests flow functions registered via the @api_flow(name) decorator — the browserless alternative to YAML/Playwright flows. Each function takes no arguments and returns a dict shaped exactly like PlaywrightFlowTool's output ({flow_name, step_results, network_log}), so anomaly_detector and everything downstream of the Flow Runner work unmodified regardless of which tool ran the flow. ApiRequestFlowTool looks the name up, runs it via asyncio.to_thread, and returns {'error': ...} JSON for unknown names or raised exceptions.",
-    "evidence": [
-      "bee_bug_hunter/api_flows.py:1-26",
-      "bee_bug_hunter/tools/api_request_tool.py:35-55"
-    ],
-    "invariants": [
-      "Registered functions must preserve the canonical output shape — shape parity is the whole contract",
-      "The registry name is what both manifest.yaml's api_flow: key and ApiRequestFlowTool's flow_name argument refer to"
-    ],
-    "last_validated": "2026-07-14T15:23:50.329726+00:00",
-    "module": "bee_bug_hunter/api_flows.py",
-    "name": "api-flows-registry-shape-parity"
-  },
-  "claude-cli-root-fork-session-topology": {
-    "confidence": 0.95,
-    "contracts": [
-      "_create() converts a {\"final_answer\": ...} reply on a required-tool turn into a final_answer tool call locally instead of failing and paying for a retry (the dominant missed_required_tool_call shape was well-formed final answers)",
-      "missed_required_tool_call outcomes are logged with a raw_preview to distinguish 'never attempted' from 'attempted but unparseable'"
-    ],
-    "created_at": "2026-07-14T15:23:50.331809+00:00",
-    "description": "ClaudeCLIChatModel shells to `claude -p --safe-mode --tools none` per reasoning step, reusing the caller's Claude Code OAuth login. Prompt caching comes from session topology: one shared role-agnostic 'root' session per flow (generic framing, no tool schemas), each role forking its own session off it on first call (--resume <root> --fork-session) and resuming its own fork thereafter, sending only messages appended since the previous call. Not one shared session across roles: each role's system prompt carries a different tool schema, and mixing them would leave stale schemas in shared history.",
-    "evidence": [
-      "bee_bug_hunter/claude_cli_llm.py:12-31",
-      "bee_bug_hunter/claude_cli_llm.py:183-216",
-      "bee_bug_hunter/claude_cli_llm.py:309-327",
-      "bee_bug_hunter/claude_cli_llm.py:373-398"
-    ],
-    "invariants": [
-      "Per-(flow, role) singleton instances (_instances + for_role()) are what make clone()-returns-self safe — HandoffTool clones the agent's llm on every delegation, which would otherwise cold-start a session per delegation",
-      "A role's session_id is persisted to disk (.claude_cli_sessions.json) the moment the CLI assigns it, so restarts resume rather than orphan sessions",
-      "A sessionless subprocess per call has no prefix for Anthropic's prompt cache to hit — the pre-session design was cold every call"
-    ],
-    "last_validated": "2026-07-14T15:23:50.331809+00:00",
-    "module": "bee_bug_hunter/claude_cli_llm.py",
-    "name": "claude-cli-root-fork-session-topology"
-  },
-  "cli-session-crash-recovery-clearing": {
-    "confidence": 0.95,
-    "contracts": [],
-    "created_at": "2026-07-14T15:23:50.332408+00:00",
-    "description": "clear_persisted_sessions() (mirrored in copilot_cli_llm.py) wipes the on-disk session store and in-memory instances at the top of every run_batch_once pass. A killed run — or simply a prior poll cycle in continuous mode — leaves a CLI-side session history ahead of BeeAI's always-fresh in-memory RequirementAgentRunState: the manager's session 'remembers' a completed flow_runner call, tries to skip to log_capturer, and gets structurally rejected by ConditionalRequirement with no clean recovery. Clearing is chosen over reconciling the two states on the fly.",
-    "evidence": [
-      "bee_bug_hunter/claude_cli_llm.py:109-124",
-      "bee_bug_hunter/copilot_cli_llm.py:111-119",
-      "bee_bug_hunter/orchestrator.py:151-166"
-    ],
-    "invariants": [
-      "Both CLI providers must be cleared per batch pass, not just at process startup — the cache otherwise survives poll cycles within one process"
-    ],
-    "last_validated": "2026-07-14T15:23:50.332408+00:00",
-    "module": "bee_bug_hunter/claude_cli_llm.py",
-    "name": "cli-session-crash-recovery-clearing"
-  },
-  "cli-text-bridge-protocol": {
-    "confidence": 0.96,
-    "contracts": [
-      "flatten_messages() returns (system_prompt, conversation_prompt); callers pass only messages new since the last invocation once a session is underway",
-      "Two 'required' instruction variants exist because BeeAI's 'required' usually still allows finishing via the final_answer tool — forbidding final_answer outright punished models for legitimately being done (the dominant missed-call failure mode was well-formed final_answer JSON)"
-    ],
-    "created_at": "2026-07-14T15:23:50.330977+00:00",
-    "description": "The CLI-agnostic half of the hand-rolled tool-calling bridge shared by claude_cli_llm.py and copilot_cli_llm.py: tool schemas are described in prompt text, the model replies with {\"tool\": ..., \"args\": {...}} or {\"final_answer\": ...} JSON, and the backends translate that into native MessageToolCallContent so BeeAI's own loop executes tools. Holds the protocol/instruction constants, JSON extraction, tool description, and message flattening.",
-    "evidence": [
-      "bee_bug_hunter/cli_tool_protocol.py:44-60",
-      "bee_bug_hunter/cli_tool_protocol.py:63-138",
-      "bee_bug_hunter/cli_tool_protocol.py:154-177"
-    ],
-    "invariants": [
-      "extract_json_object prefers protocol-shaped candidates (has 'tool' or 'final_answer') over 'first span that parses' — prose often quotes valid JSON of its own (e.g. HTTP error bodies)",
-      "Balanced-brace scanning (string/escape aware) replaced the greedy first-{-to-last-} regex that silently blobbed responses containing quoted braces",
-      "Last resort is beeai_framework's own parse_broken_json repair, accepted only if protocol-shaped"
-    ],
-    "last_validated": "2026-07-14T15:23:50.330977+00:00",
-    "module": "bee_bug_hunter/cli_tool_protocol.py",
-    "name": "cli-text-bridge-protocol"
-  },
-  "config-shared-constants": {
-    "confidence": 0.96,
-    "contracts": [
-      "Modules import these constants instead of re-declaring locally"
-    ],
-    "created_at": "2026-07-14T15:23:50.334732+00:00",
-    "description": "Single home for constants shared across main.py, tui.py, manager.py, and orchestrator.py: manifest path, DEFAULT_FLOW_KIND, per-provider model defaults and their env-var names (LLM_MODEL_ENV_VAR, used by the TUI's config panel), session-store paths, reports dir, and APP_DB_CONN/APP_DOCKER_CONN fallbacks.",
-    "evidence": [
-      "bee_bug_hunter/config.py:1-71"
-    ],
-    "invariants": [
-      "Real credentials (OPENAI_API_KEY, ANTHROPIC_API_KEY, MySQL password) stay .env-only and never get a default here",
-      "APP_DOCKER_CONN['host'] = 'local' is purely a display label, never passed to Docker"
-    ],
-    "last_validated": "2026-07-14T15:23:50.334732+00:00",
-    "module": "bee_bug_hunter/config.py",
-    "name": "config-shared-constants"
-  },
-  "copilot-cli-capability-gaps": {
-    "confidence": 0.95,
-    "contracts": [
-      "The last assistant.message event in the JSONL stream is the model's final reply for the call"
-    ],
-    "created_at": "2026-07-14T15:23:50.333967+00:00",
-    "description": "CopilotCLIChatModel is the same text-bridge idea shelled to `copilot -p`, with two capability gaps worked around: (1) no `--tools none` equivalent — tool execution is genuinely prevented only by `--excluded-tools=<every built-in tool name>` plus `--disable-builtin-mcps` (an empty `--available-tools=` alone was verified NOT to stop real shell execution; excluded-tool hallucinations show up as prose the JSON protocol parser ignores); (2) no `--append-system-prompt`/`--fork-session` — system+user text fold into one combined -p argument and each role's session starts cold rather than forking from a shared root, keeping only per-role --resume reuse.",
-    "evidence": [
-      "bee_bug_hunter/copilot_cli_llm.py:15-33",
-      "bee_bug_hunter/copilot_cli_llm.py:66-77",
-      "bee_bug_hunter/copilot_cli_llm.py:274-337"
-    ],
-    "invariants": [
-      "_EXCLUDED_TOOLS must track the CLI's full built-in tool list — any tool missing from it is executable on this host",
-      "resolved_model/premium_requests are read off the CLI's JSONL event stream because with model='auto' our own model= field would just log the literal string 'auto' forever"
-    ],
-    "last_validated": "2026-07-14T15:23:50.333967+00:00",
-    "module": "bee_bug_hunter/copilot_cli_llm.py",
-    "name": "copilot-cli-capability-gaps"
-  },
-  "delegation-capture-worker-output": {
-    "confidence": 0.96,
-    "contracts": [
-      "get_by_role(run_id, role) concatenates every result from repeat delegations with '---' separators, and returns None (not '') when the role was never delegated to — callers can distinguish 'not invoked' from 'invoked but silent'"
-    ],
-    "created_at": "2026-07-14T15:23:50.322189+00:00",
-    "description": "CapturingHandoffTool (HandoffTool subclass) records each worker's own returned text keyed by the run_id contextvar, because the manager's final answer is a synthesized summary, not the workers' raw output. This is how the orchestrator/TUI get the Bug Analyst / SQL Performance report text independent of what the manager chose to quote.",
-    "evidence": [
-      "bee_bug_hunter/delegation_capture.py:47-83"
-    ],
-    "invariants": [
-      "Role lookup is whitespace/underscore/case-insensitive (_normalize_role) so 'API Flow Runner' matches HandoffTool's derived safe-word name 'api_flow_runner'",
-      "Registry access is guarded by a threading.Lock; entries live only until orchestrator clears the run_id"
-    ],
-    "last_validated": "2026-07-14T15:23:50.322189+00:00",
-    "module": "bee_bug_hunter/delegation_capture.py",
-    "name": "delegation-capture-worker-output"
-  },
-  "docker-log-since-window": {
-    "confidence": 0.96,
-    "contracts": [
-      "Returns JSON {container: {log_path, content}} — the shape anomaly_detector iterates over for error/slow-line scanning"
-    ],
-    "created_at": "2026-07-14T15:23:50.327566+00:00",
-    "description": "DockerLogCaptureTool runs `docker logs -f --since <window>s` per container into .captures/ files, waits duration_seconds, SIGTERMs, and returns the last 8000 chars per container. The --since lookback is derived from the flow's own duration (duration * 3, floored at 60s), not 0s or a flat constant: workers run sequentially, so the flow's output predates capture start, and long flows need proportionally longer lookback.",
-    "evidence": [
-      "bee_bug_hunter/tools/docker_log_tool.py:19-33",
-      "bee_bug_hunter/tools/docker_log_tool.py:42-94"
-    ],
-    "invariants": [
-      "--since must never be 0s while delegation stays sequential — 'from now on' would miss everything the flow already emitted",
-      "A docker_host override sets DOCKER_HOST only in the subprocess env; None means the ambient docker context"
-    ],
-    "last_validated": "2026-07-14T15:23:50.327566+00:00",
-    "module": "bee_bug_hunter/tools/docker_log_tool.py",
-    "name": "docker-log-since-window"
-  },
-  "known-issues-batch-pass-registry": {
-    "confidence": 0.96,
-    "contracts": [
-      "compute_fingerprint() is a readable sorted pipe-joined string (not a hash) over http/errlog/slow signals; 'clean' means no signals",
-      "note_for(registry) returns None for an empty registry, else one string covering all recorded entries"
-    ],
-    "created_at": "2026-07-14T15:23:50.324155+00:00",
-    "description": "In-memory registry of issues confirmed earlier in the same run_batch_once pass, so a later flow's manager gets told 'flow X found this a moment ago' — context only, never a skip. Deliberately not indexed by container (container overlap is an unreliable relevance signal; the manager decides relevance itself) and deliberately never persisted across poll cycles (the demo app's source isn't git-checkpointed, so code can't be assumed unchanged between runs).",
-    "evidence": [
-      "bee_bug_hunter/known_issues.py:1-20",
-      "bee_bug_hunter/known_issues.py:28-53"
-    ],
-    "invariants": [
-      "record_issue() is the only place entries are added, and it logs at the append itself so JSONL line order is the true chronology",
-      "An issue is only recorded when compute_fingerprint(anomaly) != 'clean' — LLM prose alone can't create a known issue"
-    ],
-    "last_validated": "2026-07-14T15:23:50.324155+00:00",
-    "module": "bee_bug_hunter/known_issues.py",
-    "name": "known-issues-batch-pass-registry"
-  },
-  "llm-provider-switch": {
-    "confidence": 0.96,
-    "contracts": [
-      "Always returns a beeai_framework ChatModel"
-    ],
-    "created_at": "2026-07-14T15:23:50.320561+00:00",
-    "description": "get_chat_model() is the single provider abstraction: LLM_PROVIDER env var selects ollama (default) / openai / anthropic / claude_cli / copilot_cli. role/flow_name/containers only matter to the CLI-shelling providers' per-(flow, role) session singletons; every other provider constructs fresh per call and ignores them.",
-    "evidence": [
-      "bee_bug_hunter/llm.py:32-75"
-    ],
-    "invariants": [
-      "Unknown LLM_PROVIDER values raise ValueError rather than silently defaulting",
-      "Model-name defaults come from config.py constants; real credentials stay .env-only with no default"
-    ],
-    "last_validated": "2026-07-14T15:23:50.320561+00:00",
-    "module": "bee_bug_hunter/llm.py",
-    "name": "llm-provider-switch"
-  },
-  "llm-sequential-tool-calls-guarantee": {
-    "confidence": 0.97,
-    "contracts": [],
-    "created_at": "2026-07-14T15:23:50.320879+00:00",
-    "description": "Every provider is constructed with allow_parallel_tool_calls=False. This flag — not async-vs-sync tool execution — is the actual guarantee that the manager's sequential-delegation design holds: if a model requested two handoffs in one turn, BeeAI's run_tools() would execute them concurrently via asyncio.gather (e.g. Docker Log Capturer starting before the Flow Runner produced anything to capture).",
-    "evidence": [
-      "bee_bug_hunter/llm.py:20-29",
-      "bee_bug_hunter/claude_cli_llm.py:245-258"
-    ],
-    "invariants": [
-      "_SEQUENTIAL_TOOL_CALLS must be passed to every provider constructed in get_chat_model(), including new ones, even providers structurally incapable of >1 tool call per turn (belt-and-suspenders)",
-      "ClaudeCLIChatModel.clone() returning self is only safe because delegations are sequential — concurrent same-role delegations would race on _sent_message_count/_session_started"
-    ],
-    "last_validated": "2026-07-14T15:23:50.320879+00:00",
-    "module": "bee_bug_hunter/llm.py",
-    "name": "llm-sequential-tool-calls-guarantee"
-  },
-  "logging-jsonl-run-id-contextvar": {
-    "confidence": 0.97,
-    "contracts": [
-      "new_run_context() returns a 12-hex run_id and sets run_id/flow contextvars; grep '\"run_id\": \"<id>\"' reconstructs one run end to end"
-    ],
-    "created_at": "2026-07-14T15:23:50.324534+00:00",
-    "description": "All logging is single-line JSON (stdout always, plus rotating logs/bee_bug_hunter.jsonl) with run_id and flow carried by contextvars rather than threaded-through parameters — tool _run() methods are invoked by BeeAI's runtime, which doesn't allow extra args, and BeeAI's asyncio loop propagates contextvars across awaits. new_run_context(flow_name) is called once per flow run to scope everything downstream.",
-    "evidence": [
-      "bee_bug_hunter/logging_config.py:19-20",
-      "bee_bug_hunter/logging_config.py:68-79"
-    ],
-    "invariants": [
-      "Every log line is one JSON object (aggregator-friendly); structured fields ride in extra={'extra_fields': ...} via the log() helper",
-      "This module deliberately replaces beeai_framework.logger, which lacks JSON output, rotation, and run correlation — revisit only if BeeAI's Logger gains structured output"
-    ],
-    "last_validated": "2026-07-14T15:23:50.324534+00:00",
-    "module": "bee_bug_hunter/logging_config.py",
-    "name": "logging-jsonl-run-id-contextvar"
-  },
-  "logging-memory-context-visibility": {
-    "confidence": 0.95,
-    "contracts": [
-      "Emits memory_message_added / memory_message_removed / memory_reset events with role, 200-char preview, and memory_size"
-    ],
-    "created_at": "2026-07-14T15:23:50.324927+00:00",
-    "description": "LoggingMemory (UnconstrainedMemory subclass) logs every message added/removed/reset in an agent's context into the same JSONL stream, tagged with the agent name and ambient run_id — otherwise 'what actually went into an agent's context' is only inspectable with a debugger. Previews render tool calls/results by content type because message.text is empty for them.",
-    "evidence": [
-      "bee_bug_hunter/logging_memory.py:45-81"
-    ],
-    "invariants": [
-      "add_many() funnels through add() in BaseMemory, so overriding add/delete/reset covers every mutation path",
-      "clone() must return a LoggingMemory preserving agent_name (HandoffTool clones worker memory on delegation)"
-    ],
-    "last_validated": "2026-07-14T15:23:50.324927+00:00",
-    "module": "bee_bug_hunter/logging_memory.py",
-    "name": "logging-memory-context-visibility"
-  },
-  "manager-conditional-ordering": {
-    "confidence": 0.97,
-    "contracts": [
-      "requirements= on the supervisor guarantees delegation order regardless of what the LLM tries to call"
-    ],
-    "created_at": "2026-07-14T15:23:50.319260+00:00",
-    "description": "Worker sequencing is enforced structurally via ConditionalRequirement(only_after=...), not by trusting the prompt: log_capturer only after flow_runner, and db_query_agent / bug_analyzer / sql_performance_agent / source_code_analyst only after log_capturer, because those four are handed 'the logs from step 2' which would otherwise not exist.",
-    "evidence": [
-      "bee_bug_hunter/manager.py:49-62"
-    ],
-    "invariants": [
-      "Docker Log Capturer must never be delegatable before the Flow Runner has run — its --since lookback window is a hedge for already-emitted output, not a substitute for real ordering",
-      "Any new worker that consumes captured logs must get its own ConditionalRequirement(only_after=handoffs['log_capturer'])"
-    ],
-    "last_validated": "2026-07-14T15:23:50.319260+00:00",
-    "module": "bee_bug_hunter/manager.py",
-    "name": "manager-conditional-ordering"
-  },
-  "manager-delegation-only-supervisor": {
-    "confidence": 0.97,
-    "contracts": [
-      "build_supervisor(flow_name, containers, duration_seconds, ...) returns (RequirementAgent, prompt) ready for supervisor.run(prompt)",
-      "The final answer begins with a 'SUMMARY: <one sentence>' line (root cause or 'clean') that orchestrator.py parses via _SUMMARY_LINE_PATTERN"
-    ],
-    "created_at": "2026-07-14T15:23:50.318482+00:00",
-    "description": "The Investigation Manager is a RequirementAgent whose tool list contains only CapturingHandoffTools targeting the six workers — the 'manager only delegates' rule is structural (it has no domain tools to misuse), unlike CrewAI's hierarchical-process agent= gotcha this port replaced. Cross-delegation context comes free from HandoffTool propagating the conversation-so-far into each worker's memory.",
-    "evidence": [
-      "bee_bug_hunter/manager.py:40-82",
-      "bee_bug_hunter/manager.py:104-125",
-      "bee_bug_hunter/orchestrator.py:22"
-    ],
-    "invariants": [
-      "The supervisor's tools= must remain exclusively HandoffTool subclasses — adding a domain tool would break the structural delegation-only guarantee",
-      "Every fact in the manager's final report must come from a worker's real delegated output; the prompt forbids fabricating evidence"
-    ],
-    "last_validated": "2026-07-14T15:23:50.318482+00:00",
-    "module": "bee_bug_hunter/manager.py",
-    "name": "manager-delegation-only-supervisor"
-  },
-  "manager-flow-kind-selects-runner-tool": {
-    "confidence": 0.95,
-    "contracts": [
-      "A known_issue_note, when passed, is prepended as context-only framing — the prompt explicitly instructs the manager to re-investigate from real evidence, never to skip"
-    ],
-    "created_at": "2026-07-14T15:23:50.319596+00:00",
-    "description": "flow_kind ('ui' default vs 'api') only changes which tool the manager tells the Flow Runner to use: run_playwright_flow with flows/<flow_name>.yaml, or run_api_flow with a registered api_flows.py function name (api_flow_name). Both tools return identically shaped JSON so everything downstream is unaffected.",
-    "evidence": [
-      "bee_bug_hunter/manager.py:84-102",
-      "bee_bug_hunter/config.py:9"
-    ],
-    "invariants": [
-      "DEFAULT_FLOW_KIND lives in config.py and is read by both build_supervisor's parameter default and orchestrator's flow_cfg.get('kind', ...)"
-    ],
-    "last_validated": "2026-07-14T15:23:50.319596+00:00",
-    "module": "bee_bug_hunter/manager.py",
-    "name": "manager-flow-kind-selects-runner-tool"
-  },
-  "mysql-schema-introspection-cache": {
-    "confidence": 0.96,
-    "contracts": [],
-    "created_at": "2026-07-14T15:23:50.326874+00:00",
-    "description": "A module-level UnconstrainedCache shared by every MySQLQueryTool instance (DB Query Agent's and SQL Performance Agent's, across all flows in a batch pass) caches schema-introspection results — EXPLAIN, SHOW COLUMNS/TABLES/INDEX/CREATE TABLE, DESCRIBE — because plan/schema shape is driven by schema state, not live row content. Plain SELECTs deliberately bypass it since row data can legitimately change mid-investigation.",
-    "evidence": [
-      "bee_bug_hunter/tools/mysql_tool.py:23-52",
-      "bee_bug_hunter/tools/mysql_tool.py:124-140"
-    ],
-    "invariants": [
-      "Cache key includes resolved host:port/database, not just query text — two flows EXPLAINing the same query against different DBs must not collide",
-      "Only successful (error-free) results are cached",
-      "clear_schema_cache() rebinds a fresh instance (sync-callable) and must run at the top of every run_batch_once pass"
-    ],
-    "last_validated": "2026-07-14T15:23:50.326874+00:00",
-    "module": "bee_bug_hunter/tools/mysql_tool.py",
-    "name": "mysql-schema-introspection-cache"
-  },
-  "mysql-tool-read-only-gate": {
-    "confidence": 0.97,
-    "contracts": [
-      "Returns JSON {query, row_count, rows} on success or {query, error} / {error} on failure — never raises to the agent loop"
-    ],
-    "created_at": "2026-07-14T15:23:50.326375+00:00",
-    "description": "MySQLQueryTool rejects INSERT/UPDATE/DELETE/DROP/ALTER/TRUNCATE/CREATE via a leading-keyword regex and returns {'error': 'refused: ...'} instead of executing; EXPLAIN/SHOW/DESCRIBE pass. Connection fields resolve per-flow override -> MYSQL_* env var -> APP_DB_CONN fallback. Results are capped at fetchmany(200).",
-    "evidence": [
-      "bee_bug_hunter/tools/mysql_tool.py:18",
-      "bee_bug_hunter/tools/mysql_tool.py:96-122"
-    ],
-    "invariants": [
-      "Row contents may hold customer/PII data — logs carry query text, row count, and timing ONLY, never row values",
-      "Write rejection happens before any connection is opened"
-    ],
-    "last_validated": "2026-07-14T15:23:50.326375+00:00",
-    "module": "bee_bug_hunter/tools/mysql_tool.py",
-    "name": "mysql-tool-read-only-gate"
-  },
-  "orchestrator-batch-pass-resets": {
-    "confidence": 0.96,
-    "contracts": [
-      "Returns list of run_flow_once report dicts for the flows that succeeded"
-    ],
-    "created_at": "2026-07-14T15:23:50.321543+00:00",
-    "description": "run_batch_once resets all cross-flow caches at the top of every batch pass: CLI provider persisted sessions (claude_cli/copilot_cli), the module-level MySQL schema-introspection cache, and read_source_tool's docker-cp scratch copies. Rationale is uniform: nothing may assume a fresh poll cycle's schema/sessions/container source are unchanged from the last one. A fresh in-memory known_issues list is created per pass and discarded at the end.",
-    "evidence": [
-      "bee_bug_hunter/orchestrator.py:148-201"
-    ],
-    "invariants": [
-      "clear_persisted_sessions / clear_schema_cache / clear_scratch_cache must be called before any flow of the pass runs",
-      "One flow's failure never aborts the batch — FrameworkError and Exception are both caught per-flow and logged as flow_run_skipped_after_failure"
-    ],
-    "last_validated": "2026-07-14T15:23:50.321543+00:00",
-    "module": "bee_bug_hunter/orchestrator.py",
-    "name": "orchestrator-batch-pass-resets"
-  },
-  "orchestrator-flow-run-lifecycle": {
-    "confidence": 0.96,
-    "contracts": [
-      "Returns {flow, run_id, response, anomaly, bug_report, perf_report, report_path}; tui.py's Anomaly/Results screens consume exactly this shape"
-    ],
-    "created_at": "2026-07-14T15:23:50.321190+00:00",
-    "description": "run_flow_once is sync: it sets a fresh run_id contextvar via new_run_context(), builds the supervisor, and drives it with asyncio.run — which copies the current context, so the run_id is visible to every tool-level log line inside the supervisor's loop. After the run it assembles the report dict from tool_capture (raw JSON, preferred) falling back to delegation_capture (LLM prose), computes deterministic anomaly signals, saves a markdown report, and clears both capture registries.",
-    "evidence": [
-      "bee_bug_hunter/orchestrator.py:46-145"
-    ],
-    "invariants": [
-      "Anomaly signals are computed from the raw tool JSON recorded by tool_capture, never primarily from worker prose — delegation_capture output is a last-resort fallback only",
-      "delegation_capture.clear(run_id) and tool_capture.clear(run_id) run on every exit path, success and failure alike",
-      "supervisor.run() returns a BeeAI Run (awaitable, not a coroutine) and must be awaited inside a real coroutine for asyncio.run"
-    ],
-    "last_validated": "2026-07-14T15:23:50.321190+00:00",
-    "module": "bee_bug_hunter/orchestrator.py",
-    "name": "orchestrator-flow-run-lifecycle"
-  },
-  "orchestrator-framework-error-boundary": {
-    "confidence": 0.96,
-    "contracts": [
-      "_framework_error_fields(e) yields {error_type, is_fatal, is_retryable, error_chain} for JSONL grep"
-    ],
-    "created_at": "2026-07-14T15:23:50.321865+00:00",
-    "description": "FrameworkError adoption is scoped to the supervisor.run() boundary only: run_flow_once/run_batch_once catch FrameworkError before the generic Exception fallback and log error_type / is_fatal / is_retryable plus the full cause chain via error.explain() as structured JSONL fields. Worker tools deliberately do NOT raise ToolError — they return {'error': ...} so the LLM can see the failure and adapt within the run.",
-    "evidence": [
-      "bee_bug_hunter/orchestrator.py:27-38",
-      "bee_bug_hunter/orchestrator.py:82-101"
-    ],
-    "invariants": [
-      "Any future FrameworkError context= must stay query-shape-only (no row contents / PII), per the mysql logging rule",
-      "Tools must keep catching their own exceptions and returning {'error': ...} strings rather than raising, or a single tool failure would crash the whole supervisor loop"
-    ],
-    "last_validated": "2026-07-14T15:23:50.321865+00:00",
-    "module": "bee_bug_hunter/orchestrator.py",
-    "name": "orchestrator-framework-error-boundary"
-  },
-  "playwright-flow-yaml-steps": {
-    "confidence": 0.96,
-    "contracts": [
-      "Returns JSON {flow_name, step_results, network_log} — the canonical flow-output shape shared with run_api_flow"
-    ],
-    "created_at": "2026-07-14T15:23:50.328282+00:00",
-    "description": "PlaywrightFlowTool executes flows/<flow_name>.yaml step lists (goto, click, fill, wait_for_selector, wait_for_response, expect_status, expect_text) using Playwright's ASYNC API — required, not stylistic: BeeAI tools run inside the agent's asyncio loop and the sync Playwright API refuses to run with a loop already running. A response listener records every request/response; per-step failures are recorded, not raised, so later steps still run.",
-    "evidence": [
-      "bee_bug_hunter/tools/playwright_tool.py:1-5",
-      "bee_bug_hunter/tools/playwright_tool.py:56-112"
-    ],
-    "invariants": [
-      "Unknown actions record status 'skipped_unknown_action' instead of failing the flow",
-      "expect_status/expect_text raise AssertionError internally, which lands in that step's {'status': 'failed', 'error': ...} entry"
-    ],
-    "last_validated": "2026-07-14T15:23:50.328282+00:00",
-    "module": "bee_bug_hunter/tools/playwright_tool.py",
-    "name": "playwright-flow-yaml-steps"
-  },
-  "read-source-docker-cp-scratch": {
-    "confidence": 0.96,
-    "contracts": [
-      "Returns file content (possibly truncated with a line-count note) or an 'error: ...' string — never raises"
-    ],
-    "created_at": "2026-07-14T15:23:50.328780+00:00",
-    "description": "ReadSourceFileTool reads app source out of the running container itself (not a hardcoded local checkout — a real target may be remote with no local source): discovers the source root via `docker inspect` WorkingDir, copies it once per container with `docker cp` into a tempdir scratch cache, and serves reads from that copy, capped at 400 lines.",
-    "evidence": [
-      "bee_bug_hunter/tools/read_source_tool.py:34-58",
-      "bee_bug_hunter/tools/read_source_tool.py:83-99",
-      "bee_bug_hunter/tools/read_source_tool.py:102-108"
-    ],
-    "invariants": [
-      "Path traversal is blocked — the resolved target must stay under the container's copied source root",
-      "clear_scratch_cache() must run every batch pass: a container rebuilt with a real fix between poll cycles would otherwise be 'confirmed' buggy from stale cached source forever"
-    ],
-    "last_validated": "2026-07-14T15:23:50.328780+00:00",
-    "module": "bee_bug_hunter/tools/read_source_tool.py",
-    "name": "read-source-docker-cp-scratch"
-  },
-  "reports-markdown-per-run": {
-    "confidence": 0.95,
-    "contracts": [
-      "Returns the path written; consumes exactly run_flow_once's report dict shape"
-    ],
-    "created_at": "2026-07-14T15:23:50.335788+00:00",
-    "description": "save_report() persists one markdown file per flow run under reports/, named <utc-ts>_<flow>_<run_id>.md so runs sort chronologically and correlate with the JSONL log by run_id — without it the specialist findings would exist only in-memory or transiently in stdout.",
-    "evidence": [
-      "bee_bug_hunter/reports.py:11-43"
-    ],
-    "invariants": [
-      "Specialist sections (Bug Analyst / SQL Performance) take precedence; the manager's own summary is written only when neither specialist was escalated to"
-    ],
-    "last_validated": "2026-07-14T15:23:50.335788+00:00",
-    "module": "bee_bug_hunter/reports.py",
-    "name": "reports-markdown-per-run"
-  },
-  "tool-capture-raw-json-via-emitter": {
-    "confidence": 0.96,
-    "contracts": [
-      "get_flow_raw/get_log_raw return the MOST RECENT successful output for the run (a tool can run more than once; the last run reflects the state the report describes), or None if the tool never succeeded"
-    ],
-    "created_at": "2026-07-14T15:23:50.322863+00:00",
-    "description": "Subscribes once (idempotent install()) to BeeAI's root Emitter and records the unfiltered StringToolOutput of run_playwright_flow / run_api_flow (shared 'flow' slot) and capture_docker_logs ('logs' slot) on ToolSuccessEvent, keyed by run_id. Exists because anomaly_detector.detect() parses raw tool JSON, and worker delegation answers are LLM prose that usually isn't parseable JSON.",
-    "evidence": [
-      "bee_bug_hunter/tool_capture.py:25-29",
-      "bee_bug_hunter/tool_capture.py:36-65"
-    ],
-    "invariants": [
-      "install() is idempotent per process — orchestrator.py and tui.py both call it",
-      "Emitter callbacks fire synchronously inside the tool's own asyncio task, so the run_id contextvar is visible — the same correlation mechanism as JSONL logging",
-      "Both flow-runner tools must keep identically shaped output to legitimately share the 'flow' slot"
-    ],
-    "last_validated": "2026-07-14T15:23:50.322863+00:00",
-    "module": "bee_bug_hunter/tool_capture.py",
-    "name": "tool-capture-raw-json-via-emitter"
-  },
-  "tui-thread-and-logging-integration": {
-    "confidence": 0.94,
-    "contracts": [
-      "log_ui() routes every screen change / click / keypress into the same JSONL stream as flow-run events"
-    ],
-    "created_at": "2026-07-14T15:23:50.337028+00:00",
-    "description": "The Textual TUI runs run_flow_once in a worker thread (it's a blocking sync call that runs the supervisor's own asyncio loop internally, which must not share Textual's loop) and drives its live EventFeed by attaching a logging.Handler to the same JSONL-emitting log path — no changes to orchestrator.py needed. BEEAI_LOG_LEVEL=WARNING is set via os.environ BEFORE any beeai_framework import because BeeAI's Logger attaches a raw stdout StreamHandler at construction that bypasses both configure_logging() and Textual's alternate-screen rendering (stray stdout writes garble the terminal).",
-    "evidence": [
-      "bee_bug_hunter/tui.py:38-51",
-      "bee_bug_hunter/tui.py:17-27",
-      "bee_bug_hunter/tui.py:104-108"
-    ],
-    "invariants": [
-      "The BEEAI_LOG_LEVEL setdefault must stay above the bee_bug_hunter.* imports — CONFIG.log_level is read once at import time",
-      "Anomaly/Results screens read the anomaly/bug_report/perf_report keys of run_flow_once's return dict, sourced via delegation_capture",
-      "Every bordered content panel carries the shared '.panel' class; UI colors come from the module-level palette constants, never re-hardcoded hex"
-    ],
-    "last_validated": "2026-07-14T15:23:50.337028+00:00",
-    "module": "bee_bug_hunter/tui.py",
-    "name": "tui-thread-and-logging-integration"
+  "meta": {
+    "commit": "21036a71f9da7df2fd2628d0c24fbc6c39cde586",
+    "extracted_at": "2026-07-14T16:14:53.134429+00:00",
+    "note": "seeded inline from all bee_bug_hunter sources (task:6c8afaa1)"
   }
 }
