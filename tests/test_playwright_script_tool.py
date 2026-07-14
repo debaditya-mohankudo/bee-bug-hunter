@@ -120,6 +120,25 @@ def test_example_login_script_is_registered():
     assert "example_login_script" in PLAYWRIGHT_FLOW_REGISTRY
 
 
+@pytest.mark.asyncio
+async def test_example_login_script_runs_all_six_steps_ok():
+    """Exercises the action-dispatch in _run_step end to end -- goto, fill x2,
+    click, wait_for_response, wait_for_selector all need to resolve to a real
+    page.* call, not just structurally run without raising."""
+    page = AsyncMock()
+    response = MagicMock(url="http://localhost:3000/api/auth/login")
+    page.wait_for_event.return_value = response
+
+    fn = PLAYWRIGHT_FLOW_REGISTRY["example_login_script"]
+    step_results = await fn(page, [])
+
+    assert [s["status"] for s in step_results] == ["ok"] * 6
+    page.goto.assert_awaited_once_with("http://localhost:3000/login")
+    assert page.fill.await_count == 2
+    page.click.assert_awaited_once_with("#login-submit")
+    page.wait_for_selector.assert_awaited_once_with("#dashboard", timeout=10000)
+
+
 def test_playwright_flow_decorator_registers_under_given_name():
     @playwright_flow("decorator_test_flow")
     async def _fn(page, network_log):
