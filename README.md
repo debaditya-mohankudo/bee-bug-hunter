@@ -4,9 +4,11 @@ Autonomous bug-hunting crew built on the [BeeAI framework](https://github.com/i-
 a port of `crew-bug-hunter` (CrewAI) with the same features:
 
 - An **Investigation Manager** supervisor agent delegates (via handoff tools, never running
-  domain tools itself) to five workers, run in order: API Flow Runner (Playwright /
-  requests), Docker Log Capturer (structurally enforced to run only after the flow
-  runner), DB Query Agent, Bug Analyst, and SQL Performance Agent.
+  domain tools itself) to six workers: API Flow Runner (Playwright / requests), then
+  Docker Log Capturer (structurally enforced to run only after the flow runner), then —
+  each gated on the log capturer having run — DB Query Agent, Bug Analyst, SQL
+  Performance Agent, and Source Code Analyst (reads the app's real source, copied out of
+  its container, to confirm/refute a hypothesis against the actual implementation).
 - Flows are YAML files in `bee_bug_hunter/flows/`; the batch to monitor is listed in
   `bee_bug_hunter/manifest.yaml`.
 - Cross-flow known-issues sharing: confirmed findings from earlier flows in the same
@@ -29,16 +31,22 @@ flowchart TD
     DB["DB Query Agent<br/>read-only SQL from logs"]
     BA["Bug Analyst<br/>root-cause synthesis"]
     SP["SQL Performance Agent<br/>EXPLAIN-backed fix"]
+    SC["Source Code Analyst<br/>reads real source from container"]
     R["reports/*.md<br/>SUMMARY: one-liner"]
 
     KI -.->|notes for this flow| M
     M -->|handoff| FR
     FR -->|conversation so far<br/>via HandoffTool| LC
     LC --> DB
+    LC --> BA
+    LC --> SP
+    LC --> SC
     DB --> BA
     BA -.->|confirmed issue| KI
     BA --> SP
+    BA --> SC
     SP --> R
+    SC --> R
 ```
 
 ## Setup

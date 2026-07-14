@@ -46,7 +46,9 @@ cd .. && python -m bee_bug_hunter.main --once
 This is a BeeAI-framework port of `~/workspace/crew-bug-hunter` (CrewAI). Per flow, per poll
 cycle, `manager.build_supervisor()` builds an **Investigation Manager** `RequirementAgent`
 whose only tools are `CapturingHandoffTool`s (subclass of BeeAI's `HandoffTool`) targeting
-five worker `RequirementAgent`s defined in `agents.py`:
+six worker `RequirementAgent`s defined in `agents.py`. The manager enforces flow_runner
+before log_capturer, and log_capturer before the remaining four workers, via
+`ConditionalRequirement(..., only_after=...)`:
 
 1. **API Flow Runner** — Playwright (async API) or requests flows, records every request/response.
 2. **Docker Log Capturer** — `docker logs -f --since 5m` (window deliberately 5m, not 0s:
@@ -56,6 +58,10 @@ five worker `RequirementAgent`s defined in `agents.py`:
 4. **Bug Analyst** — root-cause synthesis; optional `check_anomalies` heuristic tool and a
    private `ContextStore` scratchpad (not shared with other agents or the manager).
 5. **SQL Performance Agent** — `EXPLAIN`-backed index/query fixes; own private scratchpad.
+6. **Source Code Analyst** — reads the app's real source (copied out of its container via
+   `ReadSourceFileTool`) to confirm or refute a hypothesis against the actual
+   implementation, e.g. the exact column name in a query or the exact loop shape behind a
+   suspected N+1.
 
 The manager-only-delegates rule is structural here (its tool list is only handoffs), unlike
 CrewAI's hierarchical-process `agent=` gotcha. Cross-delegation context comes free from
