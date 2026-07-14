@@ -1,0 +1,24 @@
+{
+  "name": "agents-six-worker-roster",
+  "module": "bee_bug_hunter/agents.py",
+  "description": "build_agents() constructs the six worker RequirementAgents (API Flow Runner, Docker Log Capturer, DB Query Agent, Bug Analyst, SQL Performance Agent, Source Code Analyst), each with its own tools and its own LoggingMemory — private per-agent memory, not shared with the manager or each other. The Bug Analyst is forced to call check_anomalies at step 1 via ConditionalRequirement(force_at_step=1).",
+  "invariants": [
+    "Each worker gets its own get_chat_model(role=...) call rather than one shared llm — required so CLI-shelling providers give each role its own session singleton and workers don't bleed into one shared session",
+    "docker_host/mysql_cfg are per-flow manifest overrides; None means 'use .env defaults'"
+  ],
+  "contracts": [
+    "build_agents() returns a dict keyed flow_runner/log_capturer/db_query_agent/bug_analyzer/sql_performance_agent/source_code_analyst — manager.py's handoff and requirement wiring depends on these exact keys"
+  ],
+  "confidence": 0.96,
+  "evidence": [
+    "bee_bug_hunter/agents.py:19-142",
+    "bee_bug_hunter/agents.py:101"
+  ],
+  "related": [
+    "manager-delegation-only-supervisor",
+    "llm-provider-switch",
+    "logging-memory-context-visibility",
+    "anomaly-tool-heuristic-not-gate"
+  ],
+  "last_validated": "2026-07-14T17:06:47.797855+00:00"
+}

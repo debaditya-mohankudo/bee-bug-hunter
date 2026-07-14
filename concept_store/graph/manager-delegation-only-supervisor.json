@@ -1,0 +1,27 @@
+{
+  "name": "manager-delegation-only-supervisor",
+  "module": "bee_bug_hunter/manager.py",
+  "description": "The Investigation Manager is a RequirementAgent whose tool list contains only CapturingHandoffTools targeting the six workers — the 'manager only delegates' rule is structural (it has no domain tools to misuse), unlike CrewAI's hierarchical-process agent= gotcha this port replaced. Cross-delegation context comes free from HandoffTool propagating the conversation-so-far into each worker's memory.",
+  "invariants": [
+    "The supervisor's tools= must remain exclusively HandoffTool subclasses — adding a domain tool would break the structural delegation-only guarantee",
+    "Every fact in the manager's final report must come from a worker's real delegated output; the prompt forbids fabricating evidence"
+  ],
+  "contracts": [
+    "build_supervisor(flow_name, containers, duration_seconds, ...) returns (RequirementAgent, prompt) ready for supervisor.run(prompt)",
+    "The final answer begins with a 'SUMMARY: <one sentence>' line (root cause or 'clean') that orchestrator.py parses via _SUMMARY_LINE_PATTERN"
+  ],
+  "confidence": 0.97,
+  "evidence": [
+    "bee_bug_hunter/manager.py:40-82",
+    "bee_bug_hunter/manager.py:104-125",
+    "bee_bug_hunter/orchestrator.py:22"
+  ],
+  "related": [
+    "manager-conditional-ordering",
+    "manager-flow-kind-selects-runner-tool",
+    "agents-six-worker-roster",
+    "delegation-capture-worker-output",
+    "llm-sequential-tool-calls-guarantee"
+  ],
+  "last_validated": "2026-07-14T17:06:47.794923+00:00"
+}

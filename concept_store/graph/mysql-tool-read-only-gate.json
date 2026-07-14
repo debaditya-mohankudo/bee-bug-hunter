@@ -1,0 +1,21 @@
+{
+  "name": "mysql-tool-read-only-gate",
+  "module": "bee_bug_hunter/tools/mysql_tool.py",
+  "description": "MySQLQueryTool rejects INSERT/UPDATE/DELETE/DROP/ALTER/TRUNCATE/CREATE via a leading-keyword regex and returns {'error': 'refused: ...'} instead of executing; EXPLAIN/SHOW/DESCRIBE pass. Connection fields resolve per-flow override -> MYSQL_* env var -> APP_DB_CONN fallback. Results are capped at fetchmany(200).",
+  "invariants": [
+    "Row contents may hold customer/PII data — logs carry query text, row count, and timing ONLY, never row values",
+    "Write rejection happens before any connection is opened"
+  ],
+  "contracts": [
+    "Returns JSON {query, row_count, rows} on success or {query, error} / {error} on failure — never raises to the agent loop"
+  ],
+  "confidence": 0.97,
+  "evidence": [
+    "bee_bug_hunter/tools/mysql_tool.py:18",
+    "bee_bug_hunter/tools/mysql_tool.py:96-122"
+  ],
+  "related": [
+    "mysql-schema-introspection-cache"
+  ],
+  "last_validated": "2026-07-14T17:06:47.807482+00:00"
+}

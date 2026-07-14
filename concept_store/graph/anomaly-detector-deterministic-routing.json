@@ -1,0 +1,24 @@
+{
+  "name": "anomaly-detector-deterministic-routing",
+  "module": "bee_bug_hunter/anomaly_detector.py",
+  "description": "Plain-code (non-LLM) anomaly detection over raw flow/log JSON, kept deterministic so routing is cheap, predictable, and testable. HTTP >=400 responses, failed steps, or ERROR/Exception/Traceback/FATAL log lines set bug_signal (Bug Analyst); any '<n> ms' duration >= 500ms sets perf_signal (SQL Performance Agent).",
+  "invariants": [
+    "detect() never raises on malformed input — unparseable JSON degrades to empty dicts and clean signals",
+    "SLOW_QUERY_MS_THRESHOLD is 500ms; slow_containers is deduplicated and sorted"
+  ],
+  "contracts": [
+    "AnomalySignals.to_dict() has the stable keys bug_signal/perf_signal/http_errors/failed_steps/error_containers/slow_containers — known_issues.compute_fingerprint and reports.py both consume it"
+  ],
+  "confidence": 0.97,
+  "evidence": [
+    "bee_bug_hunter/anomaly_detector.py:11-13",
+    "bee_bug_hunter/anomaly_detector.py:36-71"
+  ],
+  "related": [
+    "tool-capture-raw-json-via-emitter",
+    "anomaly-tool-heuristic-not-gate",
+    "known-issues-batch-pass-registry",
+    "orchestrator-flow-run-lifecycle"
+  ],
+  "last_validated": "2026-07-14T17:06:47.804458+00:00"
+}

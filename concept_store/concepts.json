@@ -15,9 +15,15 @@
         "Each worker gets its own get_chat_model(role=...) call rather than one shared llm — required so CLI-shelling providers give each role its own session singleton and workers don't bleed into one shared session",
         "docker_host/mysql_cfg are per-flow manifest overrides; None means 'use .env defaults'"
       ],
-      "last_validated": "2026-07-14T15:23:50.319890+00:00",
+      "last_validated": "2026-07-14T17:06:47.797855+00:00",
       "module": "bee_bug_hunter/agents.py",
-      "name": "agents-six-worker-roster"
+      "name": "agents-six-worker-roster",
+      "related": [
+        "manager-delegation-only-supervisor",
+        "llm-provider-switch",
+        "logging-memory-context-visibility",
+        "anomaly-tool-heuristic-not-gate"
+      ]
     },
     "agents-static-roster-metadata": {
       "confidence": 0.95,
@@ -32,9 +38,13 @@
       "invariants": [
         "agent_summaries() must stay side-effect free — no LLM construction, no env reads"
       ],
-      "last_validated": "2026-07-14T15:23:50.320227+00:00",
+      "last_validated": "2026-07-14T17:06:47.798583+00:00",
       "module": "bee_bug_hunter/agents.py",
-      "name": "agents-static-roster-metadata"
+      "name": "agents-static-roster-metadata",
+      "related": [
+        "agents-six-worker-roster",
+        "tui-thread-and-logging-integration"
+      ]
     },
     "anomaly-detector-deterministic-routing": {
       "confidence": 0.97,
@@ -51,9 +61,15 @@
         "detect() never raises on malformed input — unparseable JSON degrades to empty dicts and clean signals",
         "SLOW_QUERY_MS_THRESHOLD is 500ms; slow_containers is deduplicated and sorted"
       ],
-      "last_validated": "2026-07-14T15:23:50.323505+00:00",
+      "last_validated": "2026-07-14T17:06:47.804458+00:00",
       "module": "bee_bug_hunter/anomaly_detector.py",
-      "name": "anomaly-detector-deterministic-routing"
+      "name": "anomaly-detector-deterministic-routing",
+      "related": [
+        "tool-capture-raw-json-via-emitter",
+        "anomaly-tool-heuristic-not-gate",
+        "known-issues-batch-pass-registry",
+        "orchestrator-flow-run-lifecycle"
+      ]
     },
     "anomaly-tool-heuristic-not-gate": {
       "confidence": 0.94,
@@ -69,9 +85,13 @@
       "invariants": [
         "The tool description must keep framing the result as a heuristic hint so the analyst still judges the raw output itself"
       ],
-      "last_validated": "2026-07-14T15:23:50.330414+00:00",
+      "last_validated": "2026-07-14T17:06:47.812916+00:00",
       "module": "bee_bug_hunter/tools/anomaly_tool.py",
-      "name": "anomaly-tool-heuristic-not-gate"
+      "name": "anomaly-tool-heuristic-not-gate",
+      "related": [
+        "anomaly-detector-deterministic-routing",
+        "agents-six-worker-roster"
+      ]
     },
     "api-flows-registry-shape-parity": {
       "confidence": 0.96,
@@ -86,9 +106,13 @@
         "Registered functions must preserve the canonical output shape — shape parity is the whole contract",
         "The registry name is what both manifest.yaml's api_flow: key and ApiRequestFlowTool's flow_name argument refer to"
       ],
-      "last_validated": "2026-07-14T15:23:50.329726+00:00",
+      "last_validated": "2026-07-14T17:06:47.812130+00:00",
       "module": "bee_bug_hunter/api_flows.py",
-      "name": "api-flows-registry-shape-parity"
+      "name": "api-flows-registry-shape-parity",
+      "related": [
+        "playwright-flow-yaml-steps",
+        "manager-flow-kind-selects-runner-tool"
+      ]
     },
     "claude-cli-root-fork-session-topology": {
       "confidence": 0.95,
@@ -109,9 +133,15 @@
         "A role's session_id is persisted to disk (.claude_cli_sessions.json) the moment the CLI assigns it, so restarts resume rather than orphan sessions",
         "A sessionless subprocess per call has no prefix for Anthropic's prompt cache to hit — the pre-session design was cold every call"
       ],
-      "last_validated": "2026-07-14T15:23:50.331809+00:00",
+      "last_validated": "2026-07-14T17:06:47.814599+00:00",
       "module": "bee_bug_hunter/claude_cli_llm.py",
-      "name": "claude-cli-root-fork-session-topology"
+      "name": "claude-cli-root-fork-session-topology",
+      "related": [
+        "cli-text-bridge-protocol",
+        "cli-session-crash-recovery-clearing",
+        "llm-provider-switch",
+        "llm-sequential-tool-calls-guarantee"
+      ]
     },
     "cli-session-crash-recovery-clearing": {
       "confidence": 0.95,
@@ -126,9 +156,13 @@
       "invariants": [
         "Both CLI providers must be cleared per batch pass, not just at process startup — the cache otherwise survives poll cycles within one process"
       ],
-      "last_validated": "2026-07-14T15:23:50.332408+00:00",
+      "last_validated": "2026-07-14T17:06:47.815391+00:00",
       "module": "bee_bug_hunter/claude_cli_llm.py",
-      "name": "cli-session-crash-recovery-clearing"
+      "name": "cli-session-crash-recovery-clearing",
+      "related": [
+        "claude-cli-root-fork-session-topology",
+        "orchestrator-batch-pass-resets"
+      ]
     },
     "cli-text-bridge-protocol": {
       "confidence": 0.96,
@@ -148,9 +182,13 @@
         "Balanced-brace scanning (string/escape aware) replaced the greedy first-{-to-last-} regex that silently blobbed responses containing quoted braces",
         "Last resort is beeai_framework's own parse_broken_json repair, accepted only if protocol-shaped"
       ],
-      "last_validated": "2026-07-14T15:23:50.330977+00:00",
+      "last_validated": "2026-07-14T17:06:47.813700+00:00",
       "module": "bee_bug_hunter/cli_tool_protocol.py",
-      "name": "cli-text-bridge-protocol"
+      "name": "cli-text-bridge-protocol",
+      "related": [
+        "claude-cli-root-fork-session-topology",
+        "copilot-cli-capability-gaps"
+      ]
     },
     "config-shared-constants": {
       "confidence": 0.96,
@@ -166,9 +204,14 @@
         "Real credentials (OPENAI_API_KEY, ANTHROPIC_API_KEY, MySQL password) stay .env-only and never get a default here",
         "APP_DOCKER_CONN['host'] = 'local' is purely a display label, never passed to Docker"
       ],
-      "last_validated": "2026-07-14T15:23:50.334732+00:00",
+      "last_validated": "2026-07-14T17:06:47.816942+00:00",
       "module": "bee_bug_hunter/config.py",
-      "name": "config-shared-constants"
+      "name": "config-shared-constants",
+      "related": [
+        "llm-provider-switch",
+        "reports-markdown-per-run",
+        "manager-flow-kind-selects-runner-tool"
+      ]
     },
     "copilot-cli-capability-gaps": {
       "confidence": 0.95,
@@ -186,9 +229,13 @@
         "_EXCLUDED_TOOLS must track the CLI's full built-in tool list — any tool missing from it is executable on this host",
         "resolved_model/premium_requests are read off the CLI's JSONL event stream because with model='auto' our own model= field would just log the literal string 'auto' forever"
       ],
-      "last_validated": "2026-07-14T15:23:50.333967+00:00",
+      "last_validated": "2026-07-14T17:06:47.816166+00:00",
       "module": "bee_bug_hunter/copilot_cli_llm.py",
-      "name": "copilot-cli-capability-gaps"
+      "name": "copilot-cli-capability-gaps",
+      "related": [
+        "cli-text-bridge-protocol",
+        "llm-provider-switch"
+      ]
     },
     "delegation-capture-worker-output": {
       "confidence": 0.96,
@@ -204,9 +251,15 @@
         "Role lookup is whitespace/underscore/case-insensitive (_normalize_role) so 'API Flow Runner' matches HandoffTool's derived safe-word name 'api_flow_runner'",
         "Registry access is guarded by a threading.Lock; entries live only until orchestrator clears the run_id"
       ],
-      "last_validated": "2026-07-14T15:23:50.322189+00:00",
+      "last_validated": "2026-07-14T17:06:47.802968+00:00",
       "module": "bee_bug_hunter/delegation_capture.py",
-      "name": "delegation-capture-worker-output"
+      "name": "delegation-capture-worker-output",
+      "related": [
+        "orchestrator-flow-run-lifecycle",
+        "tool-capture-raw-json-via-emitter",
+        "manager-delegation-only-supervisor",
+        "tui-thread-and-logging-integration"
+      ]
     },
     "docker-log-since-window": {
       "confidence": 0.96,
@@ -223,9 +276,13 @@
         "--since must never be 0s while delegation stays sequential — 'from now on' would miss everything the flow already emitted",
         "A docker_host override sets DOCKER_HOST only in the subprocess env; None means the ambient docker context"
       ],
-      "last_validated": "2026-07-14T15:23:50.327566+00:00",
+      "last_validated": "2026-07-14T17:06:47.809791+00:00",
       "module": "bee_bug_hunter/tools/docker_log_tool.py",
-      "name": "docker-log-since-window"
+      "name": "docker-log-since-window",
+      "related": [
+        "manager-conditional-ordering",
+        "orchestrator-flow-run-lifecycle"
+      ]
     },
     "known-issues-batch-pass-registry": {
       "confidence": 0.96,
@@ -243,9 +300,13 @@
         "record_issue() is the only place entries are added, and it logs at the append itself so JSONL line order is the true chronology",
         "An issue is only recorded when compute_fingerprint(anomaly) != 'clean' — LLM prose alone can't create a known issue"
       ],
-      "last_validated": "2026-07-14T15:23:50.324155+00:00",
+      "last_validated": "2026-07-14T17:06:47.805237+00:00",
       "module": "bee_bug_hunter/known_issues.py",
-      "name": "known-issues-batch-pass-registry"
+      "name": "known-issues-batch-pass-registry",
+      "related": [
+        "orchestrator-batch-pass-resets",
+        "anomaly-detector-deterministic-routing"
+      ]
     },
     "llm-provider-switch": {
       "confidence": 0.96,
@@ -261,9 +322,16 @@
         "Unknown LLM_PROVIDER values raise ValueError rather than silently defaulting",
         "Model-name defaults come from config.py constants; real credentials stay .env-only with no default"
       ],
-      "last_validated": "2026-07-14T15:23:50.320561+00:00",
+      "last_validated": "2026-07-14T17:06:47.799318+00:00",
       "module": "bee_bug_hunter/llm.py",
-      "name": "llm-provider-switch"
+      "name": "llm-provider-switch",
+      "related": [
+        "llm-sequential-tool-calls-guarantee",
+        "agents-six-worker-roster",
+        "claude-cli-root-fork-session-topology",
+        "copilot-cli-capability-gaps",
+        "config-shared-constants"
+      ]
     },
     "llm-sequential-tool-calls-guarantee": {
       "confidence": 0.97,
@@ -278,9 +346,14 @@
         "_SEQUENTIAL_TOOL_CALLS must be passed to every provider constructed in get_chat_model(), including new ones, even providers structurally incapable of >1 tool call per turn (belt-and-suspenders)",
         "ClaudeCLIChatModel.clone() returning self is only safe because delegations are sequential — concurrent same-role delegations would race on _sent_message_count/_session_started"
       ],
-      "last_validated": "2026-07-14T15:23:50.320879+00:00",
+      "last_validated": "2026-07-14T17:06:47.800031+00:00",
       "module": "bee_bug_hunter/llm.py",
-      "name": "llm-sequential-tool-calls-guarantee"
+      "name": "llm-sequential-tool-calls-guarantee",
+      "related": [
+        "llm-provider-switch",
+        "manager-conditional-ordering",
+        "claude-cli-root-fork-session-topology"
+      ]
     },
     "logging-jsonl-run-id-contextvar": {
       "confidence": 0.97,
@@ -297,9 +370,14 @@
         "Every log line is one JSON object (aggregator-friendly); structured fields ride in extra={'extra_fields': ...} via the log() helper",
         "This module deliberately replaces beeai_framework.logger, which lacks JSON output, rotation, and run correlation — revisit only if BeeAI's Logger gains structured output"
       ],
-      "last_validated": "2026-07-14T15:23:50.324534+00:00",
+      "last_validated": "2026-07-14T17:06:47.805976+00:00",
       "module": "bee_bug_hunter/logging_config.py",
-      "name": "logging-jsonl-run-id-contextvar"
+      "name": "logging-jsonl-run-id-contextvar",
+      "related": [
+        "logging-memory-context-visibility",
+        "orchestrator-framework-error-boundary",
+        "tui-thread-and-logging-integration"
+      ]
     },
     "logging-memory-context-visibility": {
       "confidence": 0.95,
@@ -315,9 +393,13 @@
         "add_many() funnels through add() in BaseMemory, so overriding add/delete/reset covers every mutation path",
         "clone() must return a LoggingMemory preserving agent_name (HandoffTool clones worker memory on delegation)"
       ],
-      "last_validated": "2026-07-14T15:23:50.324927+00:00",
+      "last_validated": "2026-07-14T17:06:47.806723+00:00",
       "module": "bee_bug_hunter/logging_memory.py",
-      "name": "logging-memory-context-visibility"
+      "name": "logging-memory-context-visibility",
+      "related": [
+        "logging-jsonl-run-id-contextvar",
+        "agents-six-worker-roster"
+      ]
     },
     "manager-conditional-ordering": {
       "confidence": 0.97,
@@ -333,9 +415,14 @@
         "Docker Log Capturer must never be delegatable before the Flow Runner has run — its --since lookback window is a hedge for already-emitted output, not a substitute for real ordering",
         "Any new worker that consumes captured logs must get its own ConditionalRequirement(only_after=handoffs['log_capturer'])"
       ],
-      "last_validated": "2026-07-14T15:23:50.319260+00:00",
+      "last_validated": "2026-07-14T17:06:47.796262+00:00",
       "module": "bee_bug_hunter/manager.py",
-      "name": "manager-conditional-ordering"
+      "name": "manager-conditional-ordering",
+      "related": [
+        "manager-delegation-only-supervisor",
+        "docker-log-since-window",
+        "orchestrator-flow-run-lifecycle"
+      ]
     },
     "manager-delegation-only-supervisor": {
       "confidence": 0.97,
@@ -354,9 +441,16 @@
         "The supervisor's tools= must remain exclusively HandoffTool subclasses — adding a domain tool would break the structural delegation-only guarantee",
         "Every fact in the manager's final report must come from a worker's real delegated output; the prompt forbids fabricating evidence"
       ],
-      "last_validated": "2026-07-14T15:23:50.318482+00:00",
+      "last_validated": "2026-07-14T17:06:47.794923+00:00",
       "module": "bee_bug_hunter/manager.py",
-      "name": "manager-delegation-only-supervisor"
+      "name": "manager-delegation-only-supervisor",
+      "related": [
+        "manager-conditional-ordering",
+        "manager-flow-kind-selects-runner-tool",
+        "agents-six-worker-roster",
+        "delegation-capture-worker-output",
+        "llm-sequential-tool-calls-guarantee"
+      ]
     },
     "manager-flow-kind-selects-runner-tool": {
       "confidence": 0.95,
@@ -372,9 +466,14 @@
       "invariants": [
         "DEFAULT_FLOW_KIND lives in config.py and is read by both build_supervisor's parameter default and orchestrator's flow_cfg.get('kind', ...)"
       ],
-      "last_validated": "2026-07-14T15:23:50.319596+00:00",
+      "last_validated": "2026-07-14T17:06:47.797003+00:00",
       "module": "bee_bug_hunter/manager.py",
-      "name": "manager-flow-kind-selects-runner-tool"
+      "name": "manager-flow-kind-selects-runner-tool",
+      "related": [
+        "manager-delegation-only-supervisor",
+        "playwright-flow-yaml-steps",
+        "api-flows-registry-shape-parity"
+      ]
     },
     "mysql-schema-introspection-cache": {
       "confidence": 0.96,
@@ -390,9 +489,13 @@
         "Only successful (error-free) results are cached",
         "clear_schema_cache() rebinds a fresh instance (sync-callable) and must run at the top of every run_batch_once pass"
       ],
-      "last_validated": "2026-07-14T15:23:50.326874+00:00",
+      "last_validated": "2026-07-14T17:06:47.808938+00:00",
       "module": "bee_bug_hunter/tools/mysql_tool.py",
-      "name": "mysql-schema-introspection-cache"
+      "name": "mysql-schema-introspection-cache",
+      "related": [
+        "mysql-tool-read-only-gate",
+        "orchestrator-batch-pass-resets"
+      ]
     },
     "mysql-tool-read-only-gate": {
       "confidence": 0.97,
@@ -409,9 +512,12 @@
         "Row contents may hold customer/PII data — logs carry query text, row count, and timing ONLY, never row values",
         "Write rejection happens before any connection is opened"
       ],
-      "last_validated": "2026-07-14T15:23:50.326375+00:00",
+      "last_validated": "2026-07-14T17:06:47.807482+00:00",
       "module": "bee_bug_hunter/tools/mysql_tool.py",
-      "name": "mysql-tool-read-only-gate"
+      "name": "mysql-tool-read-only-gate",
+      "related": [
+        "mysql-schema-introspection-cache"
+      ]
     },
     "orchestrator-batch-pass-resets": {
       "confidence": 0.96,
@@ -427,9 +533,16 @@
         "clear_persisted_sessions / clear_schema_cache / clear_scratch_cache must be called before any flow of the pass runs",
         "One flow's failure never aborts the batch — FrameworkError and Exception are both caught per-flow and logged as flow_run_skipped_after_failure"
       ],
-      "last_validated": "2026-07-14T15:23:50.321543+00:00",
+      "last_validated": "2026-07-14T17:06:47.801475+00:00",
       "module": "bee_bug_hunter/orchestrator.py",
-      "name": "orchestrator-batch-pass-resets"
+      "name": "orchestrator-batch-pass-resets",
+      "related": [
+        "orchestrator-flow-run-lifecycle",
+        "cli-session-crash-recovery-clearing",
+        "mysql-schema-introspection-cache",
+        "read-source-docker-cp-scratch",
+        "known-issues-batch-pass-registry"
+      ]
     },
     "orchestrator-flow-run-lifecycle": {
       "confidence": 0.96,
@@ -446,9 +559,18 @@
         "delegation_capture.clear(run_id) and tool_capture.clear(run_id) run on every exit path, success and failure alike",
         "supervisor.run() returns a BeeAI Run (awaitable, not a coroutine) and must be awaited inside a real coroutine for asyncio.run"
       ],
-      "last_validated": "2026-07-14T15:23:50.321190+00:00",
+      "last_validated": "2026-07-14T17:06:47.800750+00:00",
       "module": "bee_bug_hunter/orchestrator.py",
-      "name": "orchestrator-flow-run-lifecycle"
+      "name": "orchestrator-flow-run-lifecycle",
+      "related": [
+        "orchestrator-batch-pass-resets",
+        "orchestrator-framework-error-boundary",
+        "tool-capture-raw-json-via-emitter",
+        "delegation-capture-worker-output",
+        "anomaly-detector-deterministic-routing",
+        "reports-markdown-per-run",
+        "manager-delegation-only-supervisor"
+      ]
     },
     "orchestrator-framework-error-boundary": {
       "confidence": 0.96,
@@ -465,9 +587,13 @@
         "Any future FrameworkError context= must stay query-shape-only (no row contents / PII), per the mysql logging rule",
         "Tools must keep catching their own exceptions and returning {'error': ...} strings rather than raising, or a single tool failure would crash the whole supervisor loop"
       ],
-      "last_validated": "2026-07-14T15:23:50.321865+00:00",
+      "last_validated": "2026-07-14T17:06:47.802230+00:00",
       "module": "bee_bug_hunter/orchestrator.py",
-      "name": "orchestrator-framework-error-boundary"
+      "name": "orchestrator-framework-error-boundary",
+      "related": [
+        "orchestrator-flow-run-lifecycle",
+        "logging-jsonl-run-id-contextvar"
+      ]
     },
     "playwright-flow-yaml-steps": {
       "confidence": 0.96,
@@ -484,9 +610,13 @@
         "Unknown actions record status 'skipped_unknown_action' instead of failing the flow",
         "expect_status/expect_text raise AssertionError internally, which lands in that step's {'status': 'failed', 'error': ...} entry"
       ],
-      "last_validated": "2026-07-14T15:23:50.328282+00:00",
+      "last_validated": "2026-07-14T17:06:47.810583+00:00",
       "module": "bee_bug_hunter/tools/playwright_tool.py",
-      "name": "playwright-flow-yaml-steps"
+      "name": "playwright-flow-yaml-steps",
+      "related": [
+        "manager-flow-kind-selects-runner-tool",
+        "api-flows-registry-shape-parity"
+      ]
     },
     "read-source-docker-cp-scratch": {
       "confidence": 0.96,
@@ -504,9 +634,12 @@
         "Path traversal is blocked — the resolved target must stay under the container's copied source root",
         "clear_scratch_cache() must run every batch pass: a container rebuilt with a real fix between poll cycles would otherwise be 'confirmed' buggy from stale cached source forever"
       ],
-      "last_validated": "2026-07-14T15:23:50.328780+00:00",
+      "last_validated": "2026-07-14T17:06:47.811355+00:00",
       "module": "bee_bug_hunter/tools/read_source_tool.py",
-      "name": "read-source-docker-cp-scratch"
+      "name": "read-source-docker-cp-scratch",
+      "related": [
+        "orchestrator-batch-pass-resets"
+      ]
     },
     "reports-markdown-per-run": {
       "confidence": 0.95,
@@ -521,9 +654,13 @@
       "invariants": [
         "Specialist sections (Bug Analyst / SQL Performance) take precedence; the manager's own summary is written only when neither specialist was escalated to"
       ],
-      "last_validated": "2026-07-14T15:23:50.335788+00:00",
+      "last_validated": "2026-07-14T17:06:47.817732+00:00",
       "module": "bee_bug_hunter/reports.py",
-      "name": "reports-markdown-per-run"
+      "name": "reports-markdown-per-run",
+      "related": [
+        "orchestrator-flow-run-lifecycle",
+        "config-shared-constants"
+      ]
     },
     "tool-capture-raw-json-via-emitter": {
       "confidence": 0.96,
@@ -541,9 +678,14 @@
         "Emitter callbacks fire synchronously inside the tool's own asyncio task, so the run_id contextvar is visible — the same correlation mechanism as JSONL logging",
         "Both flow-runner tools must keep identically shaped output to legitimately share the 'flow' slot"
       ],
-      "last_validated": "2026-07-14T15:23:50.322863+00:00",
+      "last_validated": "2026-07-14T17:06:47.803707+00:00",
       "module": "bee_bug_hunter/tool_capture.py",
-      "name": "tool-capture-raw-json-via-emitter"
+      "name": "tool-capture-raw-json-via-emitter",
+      "related": [
+        "delegation-capture-worker-output",
+        "orchestrator-flow-run-lifecycle",
+        "anomaly-detector-deterministic-routing"
+      ]
     },
     "tui-thread-and-logging-integration": {
       "confidence": 0.94,
@@ -562,9 +704,15 @@
         "Anomaly/Results screens read the anomaly/bug_report/perf_report keys of run_flow_once's return dict, sourced via delegation_capture",
         "Every bordered content panel carries the shared '.panel' class; UI colors come from the module-level palette constants, never re-hardcoded hex"
       ],
-      "last_validated": "2026-07-14T15:23:50.337028+00:00",
+      "last_validated": "2026-07-14T17:06:47.818553+00:00",
       "module": "bee_bug_hunter/tui.py",
-      "name": "tui-thread-and-logging-integration"
+      "name": "tui-thread-and-logging-integration",
+      "related": [
+        "orchestrator-flow-run-lifecycle",
+        "delegation-capture-worker-output",
+        "agents-static-roster-metadata",
+        "logging-jsonl-run-id-contextvar"
+      ]
     }
   },
   "meta": {

@@ -1,0 +1,20 @@
+{
+  "name": "reports-markdown-per-run",
+  "module": "bee_bug_hunter/reports.py",
+  "description": "save_report() persists one markdown file per flow run under reports/, named <utc-ts>_<flow>_<run_id>.md so runs sort chronologically and correlate with the JSONL log by run_id — without it the specialist findings would exist only in-memory or transiently in stdout.",
+  "invariants": [
+    "Specialist sections (Bug Analyst / SQL Performance) take precedence; the manager's own summary is written only when neither specialist was escalated to"
+  ],
+  "contracts": [
+    "Returns the path written; consumes exactly run_flow_once's report dict shape"
+  ],
+  "confidence": 0.95,
+  "evidence": [
+    "bee_bug_hunter/reports.py:11-43"
+  ],
+  "related": [
+    "orchestrator-flow-run-lifecycle",
+    "config-shared-constants"
+  ],
+  "last_validated": "2026-07-14T17:06:47.817732+00:00"
+}

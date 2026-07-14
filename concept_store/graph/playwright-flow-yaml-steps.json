@@ -1,0 +1,22 @@
+{
+  "name": "playwright-flow-yaml-steps",
+  "module": "bee_bug_hunter/tools/playwright_tool.py",
+  "description": "PlaywrightFlowTool executes flows/<flow_name>.yaml step lists (goto, click, fill, wait_for_selector, wait_for_response, expect_status, expect_text) using Playwright's ASYNC API — required, not stylistic: BeeAI tools run inside the agent's asyncio loop and the sync Playwright API refuses to run with a loop already running. A response listener records every request/response; per-step failures are recorded, not raised, so later steps still run.",
+  "invariants": [
+    "Unknown actions record status 'skipped_unknown_action' instead of failing the flow",
+    "expect_status/expect_text raise AssertionError internally, which lands in that step's {'status': 'failed', 'error': ...} entry"
+  ],
+  "contracts": [
+    "Returns JSON {flow_name, step_results, network_log} — the canonical flow-output shape shared with run_api_flow"
+  ],
+  "confidence": 0.96,
+  "evidence": [
+    "bee_bug_hunter/tools/playwright_tool.py:1-5",
+    "bee_bug_hunter/tools/playwright_tool.py:56-112"
+  ],
+  "related": [
+    "manager-flow-kind-selects-runner-tool",
+    "api-flows-registry-shape-parity"
+  ],
+  "last_validated": "2026-07-14T17:06:47.810583+00:00"
+}

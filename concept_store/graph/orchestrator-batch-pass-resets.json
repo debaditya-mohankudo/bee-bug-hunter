@@ -1,0 +1,24 @@
+{
+  "name": "orchestrator-batch-pass-resets",
+  "module": "bee_bug_hunter/orchestrator.py",
+  "description": "run_batch_once resets all cross-flow caches at the top of every batch pass: CLI provider persisted sessions (claude_cli/copilot_cli), the module-level MySQL schema-introspection cache, and read_source_tool's docker-cp scratch copies. Rationale is uniform: nothing may assume a fresh poll cycle's schema/sessions/container source are unchanged from the last one. A fresh in-memory known_issues list is created per pass and discarded at the end.",
+  "invariants": [
+    "clear_persisted_sessions / clear_schema_cache / clear_scratch_cache must be called before any flow of the pass runs",
+    "One flow's failure never aborts the batch — FrameworkError and Exception are both caught per-flow and logged as flow_run_skipped_after_failure"
+  ],
+  "contracts": [
+    "Returns list of run_flow_once report dicts for the flows that succeeded"
+  ],
+  "confidence": 0.96,
+  "evidence": [
+    "bee_bug_hunter/orchestrator.py:148-201"
+  ],
+  "related": [
+    "orchestrator-flow-run-lifecycle",
+    "cli-session-crash-recovery-clearing",
+    "mysql-schema-introspection-cache",
+    "read-source-docker-cp-scratch",
+    "known-issues-batch-pass-registry"
+  ],
+  "last_validated": "2026-07-14T17:06:47.801475+00:00"
+}

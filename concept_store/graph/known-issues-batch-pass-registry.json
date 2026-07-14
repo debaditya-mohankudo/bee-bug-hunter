@@ -1,0 +1,23 @@
+{
+  "name": "known-issues-batch-pass-registry",
+  "module": "bee_bug_hunter/known_issues.py",
+  "description": "In-memory registry of issues confirmed earlier in the same run_batch_once pass, so a later flow's manager gets told 'flow X found this a moment ago' — context only, never a skip. Deliberately not indexed by container (container overlap is an unreliable relevance signal; the manager decides relevance itself) and deliberately never persisted across poll cycles (the demo app's source isn't git-checkpointed, so code can't be assumed unchanged between runs).",
+  "invariants": [
+    "record_issue() is the only place entries are added, and it logs at the append itself so JSONL line order is the true chronology",
+    "An issue is only recorded when compute_fingerprint(anomaly) != 'clean' — LLM prose alone can't create a known issue"
+  ],
+  "contracts": [
+    "compute_fingerprint() is a readable sorted pipe-joined string (not a hash) over http/errlog/slow signals; 'clean' means no signals",
+    "note_for(registry) returns None for an empty registry, else one string covering all recorded entries"
+  ],
+  "confidence": 0.96,
+  "evidence": [
+    "bee_bug_hunter/known_issues.py:1-20",
+    "bee_bug_hunter/known_issues.py:28-53"
+  ],
+  "related": [
+    "orchestrator-batch-pass-resets",
+    "anomaly-detector-deterministic-routing"
+  ],
+  "last_validated": "2026-07-14T17:06:47.805237+00:00"
+}

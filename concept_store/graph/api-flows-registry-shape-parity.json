@@ -1,0 +1,20 @@
+{
+  "name": "api-flows-registry-shape-parity",
+  "module": "bee_bug_hunter/api_flows.py",
+  "description": "API_FLOW_REGISTRY holds Python/requests flow functions registered via the @api_flow(name) decorator — the browserless alternative to YAML/Playwright flows. Each function takes no arguments and returns a dict shaped exactly like PlaywrightFlowTool's output ({flow_name, step_results, network_log}), so anomaly_detector and everything downstream of the Flow Runner work unmodified regardless of which tool ran the flow. ApiRequestFlowTool looks the name up, runs it via asyncio.to_thread, and returns {'error': ...} JSON for unknown names or raised exceptions.",
+  "invariants": [
+    "Registered functions must preserve the canonical output shape — shape parity is the whole contract",
+    "The registry name is what both manifest.yaml's api_flow: key and ApiRequestFlowTool's flow_name argument refer to"
+  ],
+  "contracts": [],
+  "confidence": 0.96,
+  "evidence": [
+    "bee_bug_hunter/api_flows.py:1-26",
+    "bee_bug_hunter/tools/api_request_tool.py:35-55"
+  ],
+  "related": [
+    "playwright-flow-yaml-steps",
+    "manager-flow-kind-selects-runner-tool"
+  ],
+  "last_validated": "2026-07-14T17:06:47.812130+00:00"
+}

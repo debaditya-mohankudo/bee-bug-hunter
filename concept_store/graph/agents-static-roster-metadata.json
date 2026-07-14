@@ -1,0 +1,20 @@
+{
+  "name": "agents-static-roster-metadata",
+  "module": "bee_bug_hunter/agents.py",
+  "description": "AGENT_SUMMARIES is static role/goal metadata kept separate from build_agents() so listing the roster (the TUI home screen) never requires a configured LLM provider.",
+  "invariants": [
+    "agent_summaries() must stay side-effect free — no LLM construction, no env reads"
+  ],
+  "contracts": [
+    "Returns list[dict] with 'role' and 'goal' keys for all seven roles including the manager"
+  ],
+  "confidence": 0.95,
+  "evidence": [
+    "bee_bug_hunter/agents.py:145-180"
+  ],
+  "related": [
+    "agents-six-worker-roster",
+    "tui-thread-and-logging-integration"
+  ],
+  "last_validated": "2026-07-14T17:06:47.798583+00:00"
+}

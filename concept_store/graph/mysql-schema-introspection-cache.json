@@ -1,0 +1,21 @@
+{
+  "name": "mysql-schema-introspection-cache",
+  "module": "bee_bug_hunter/tools/mysql_tool.py",
+  "description": "A module-level UnconstrainedCache shared by every MySQLQueryTool instance (DB Query Agent's and SQL Performance Agent's, across all flows in a batch pass) caches schema-introspection results — EXPLAIN, SHOW COLUMNS/TABLES/INDEX/CREATE TABLE, DESCRIBE — because plan/schema shape is driven by schema state, not live row content. Plain SELECTs deliberately bypass it since row data can legitimately change mid-investigation.",
+  "invariants": [
+    "Cache key includes resolved host:port/database, not just query text — two flows EXPLAINing the same query against different DBs must not collide",
+    "Only successful (error-free) results are cached",
+    "clear_schema_cache() rebinds a fresh instance (sync-callable) and must run at the top of every run_batch_once pass"
+  ],
+  "contracts": [],
+  "confidence": 0.96,
+  "evidence": [
+    "bee_bug_hunter/tools/mysql_tool.py:23-52",
+    "bee_bug_hunter/tools/mysql_tool.py:124-140"
+  ],
+  "related": [
+    "mysql-tool-read-only-gate",
+    "orchestrator-batch-pass-resets"
+  ],
+  "last_validated": "2026-07-14T17:06:47.808938+00:00"
+}

@@ -1,0 +1,22 @@
+{
+  "name": "orchestrator-framework-error-boundary",
+  "module": "bee_bug_hunter/orchestrator.py",
+  "description": "FrameworkError adoption is scoped to the supervisor.run() boundary only: run_flow_once/run_batch_once catch FrameworkError before the generic Exception fallback and log error_type / is_fatal / is_retryable plus the full cause chain via error.explain() as structured JSONL fields. Worker tools deliberately do NOT raise ToolError — they return {'error': ...} so the LLM can see the failure and adapt within the run.",
+  "invariants": [
+    "Any future FrameworkError context= must stay query-shape-only (no row contents / PII), per the mysql logging rule",
+    "Tools must keep catching their own exceptions and returning {'error': ...} strings rather than raising, or a single tool failure would crash the whole supervisor loop"
+  ],
+  "contracts": [
+    "_framework_error_fields(e) yields {error_type, is_fatal, is_retryable, error_chain} for JSONL grep"
+  ],
+  "confidence": 0.96,
+  "evidence": [
+    "bee_bug_hunter/orchestrator.py:27-38",
+    "bee_bug_hunter/orchestrator.py:82-101"
+  ],
+  "related": [
+    "orchestrator-flow-run-lifecycle",
+    "logging-jsonl-run-id-contextvar"
+  ],
+  "last_validated": "2026-07-14T17:06:47.802230+00:00"
+}

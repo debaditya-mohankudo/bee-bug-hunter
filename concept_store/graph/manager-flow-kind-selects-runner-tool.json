@@ -1,0 +1,22 @@
+{
+  "name": "manager-flow-kind-selects-runner-tool",
+  "module": "bee_bug_hunter/manager.py",
+  "description": "flow_kind ('ui' default vs 'api') only changes which tool the manager tells the Flow Runner to use: run_playwright_flow with flows/<flow_name>.yaml, or run_api_flow with a registered api_flows.py function name (api_flow_name). Both tools return identically shaped JSON so everything downstream is unaffected.",
+  "invariants": [
+    "DEFAULT_FLOW_KIND lives in config.py and is read by both build_supervisor's parameter default and orchestrator's flow_cfg.get('kind', ...)"
+  ],
+  "contracts": [
+    "A known_issue_note, when passed, is prepended as context-only framing — the prompt explicitly instructs the manager to re-investigate from real evidence, never to skip"
+  ],
+  "confidence": 0.95,
+  "evidence": [
+    "bee_bug_hunter/manager.py:84-102",
+    "bee_bug_hunter/config.py:9"
+  ],
+  "related": [
+    "manager-delegation-only-supervisor",
+    "playwright-flow-yaml-steps",
+    "api-flows-registry-shape-parity"
+  ],
+  "last_validated": "2026-07-14T17:06:47.797003+00:00"
+}

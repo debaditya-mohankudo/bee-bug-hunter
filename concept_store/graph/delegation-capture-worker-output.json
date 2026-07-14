@@ -1,0 +1,23 @@
+{
+  "name": "delegation-capture-worker-output",
+  "module": "bee_bug_hunter/delegation_capture.py",
+  "description": "CapturingHandoffTool (HandoffTool subclass) records each worker's own returned text keyed by the run_id contextvar, because the manager's final answer is a synthesized summary, not the workers' raw output. This is how the orchestrator/TUI get the Bug Analyst / SQL Performance report text independent of what the manager chose to quote.",
+  "invariants": [
+    "Role lookup is whitespace/underscore/case-insensitive (_normalize_role) so 'API Flow Runner' matches HandoffTool's derived safe-word name 'api_flow_runner'",
+    "Registry access is guarded by a threading.Lock; entries live only until orchestrator clears the run_id"
+  ],
+  "contracts": [
+    "get_by_role(run_id, role) concatenates every result from repeat delegations with '---' separators, and returns None (not '') when the role was never delegated to — callers can distinguish 'not invoked' from 'invoked but silent'"
+  ],
+  "confidence": 0.96,
+  "evidence": [
+    "bee_bug_hunter/delegation_capture.py:47-83"
+  ],
+  "related": [
+    "orchestrator-flow-run-lifecycle",
+    "tool-capture-raw-json-via-emitter",
+    "manager-delegation-only-supervisor",
+    "tui-thread-and-logging-integration"
+  ],
+  "last_validated": "2026-07-14T17:06:47.802968+00:00"
+}

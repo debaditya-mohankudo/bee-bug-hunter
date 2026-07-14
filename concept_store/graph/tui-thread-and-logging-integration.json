@@ -1,0 +1,26 @@
+{
+  "name": "tui-thread-and-logging-integration",
+  "module": "bee_bug_hunter/tui.py",
+  "description": "The Textual TUI runs run_flow_once in a worker thread (it's a blocking sync call that runs the supervisor's own asyncio loop internally, which must not share Textual's loop) and drives its live EventFeed by attaching a logging.Handler to the same JSONL-emitting log path — no changes to orchestrator.py needed. BEEAI_LOG_LEVEL=WARNING is set via os.environ BEFORE any beeai_framework import because BeeAI's Logger attaches a raw stdout StreamHandler at construction that bypasses both configure_logging() and Textual's alternate-screen rendering (stray stdout writes garble the terminal).",
+  "invariants": [
+    "The BEEAI_LOG_LEVEL setdefault must stay above the bee_bug_hunter.* imports — CONFIG.log_level is read once at import time",
+    "Anomaly/Results screens read the anomaly/bug_report/perf_report keys of run_flow_once's return dict, sourced via delegation_capture",
+    "Every bordered content panel carries the shared '.panel' class; UI colors come from the module-level palette constants, never re-hardcoded hex"
+  ],
+  "contracts": [
+    "log_ui() routes every screen change / click / keypress into the same JSONL stream as flow-run events"
+  ],
+  "confidence": 0.94,
+  "evidence": [
+    "bee_bug_hunter/tui.py:38-51",
+    "bee_bug_hunter/tui.py:17-27",
+    "bee_bug_hunter/tui.py:104-108"
+  ],
+  "related": [
+    "orchestrator-flow-run-lifecycle",
+    "delegation-capture-worker-output",
+    "agents-static-roster-metadata",
+    "logging-jsonl-run-id-contextvar"
+  ],
+  "last_validated": "2026-07-14T17:06:47.818553+00:00"
+}

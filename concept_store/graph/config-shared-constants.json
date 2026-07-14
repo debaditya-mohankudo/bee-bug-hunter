@@ -1,0 +1,22 @@
+{
+  "name": "config-shared-constants",
+  "module": "bee_bug_hunter/config.py",
+  "description": "Single home for constants shared across main.py, tui.py, manager.py, and orchestrator.py: manifest path, DEFAULT_FLOW_KIND, per-provider model defaults and their env-var names (LLM_MODEL_ENV_VAR, used by the TUI's config panel), session-store paths, reports dir, and APP_DB_CONN/APP_DOCKER_CONN fallbacks.",
+  "invariants": [
+    "Real credentials (OPENAI_API_KEY, ANTHROPIC_API_KEY, MySQL password) stay .env-only and never get a default here",
+    "APP_DOCKER_CONN['host'] = 'local' is purely a display label, never passed to Docker"
+  ],
+  "contracts": [
+    "Modules import these constants instead of re-declaring locally"
+  ],
+  "confidence": 0.96,
+  "evidence": [
+    "bee_bug_hunter/config.py:1-71"
+  ],
+  "related": [
+    "llm-provider-switch",
+    "reports-markdown-per-run",
+    "manager-flow-kind-selects-runner-tool"
+  ],
+  "last_validated": "2026-07-14T17:06:47.816942+00:00"
+}

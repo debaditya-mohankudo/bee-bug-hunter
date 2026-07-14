@@ -1,0 +1,22 @@
+{
+  "name": "manager-conditional-ordering",
+  "module": "bee_bug_hunter/manager.py",
+  "description": "Worker sequencing is enforced structurally via ConditionalRequirement(only_after=...), not by trusting the prompt: log_capturer only after flow_runner, and db_query_agent / bug_analyzer / sql_performance_agent / source_code_analyst only after log_capturer, because those four are handed 'the logs from step 2' which would otherwise not exist.",
+  "invariants": [
+    "Docker Log Capturer must never be delegatable before the Flow Runner has run — its --since lookback window is a hedge for already-emitted output, not a substitute for real ordering",
+    "Any new worker that consumes captured logs must get its own ConditionalRequirement(only_after=handoffs['log_capturer'])"
+  ],
+  "contracts": [
+    "requirements= on the supervisor guarantees delegation order regardless of what the LLM tries to call"
+  ],
+  "confidence": 0.97,
+  "evidence": [
+    "bee_bug_hunter/manager.py:49-62"
+  ],
+  "related": [
+    "manager-delegation-only-supervisor",
+    "docker-log-since-window",
+    "orchestrator-flow-run-lifecycle"
+  ],
+  "last_validated": "2026-07-14T17:06:47.796262+00:00"
+}

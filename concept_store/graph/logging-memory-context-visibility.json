@@ -1,0 +1,21 @@
+{
+  "name": "logging-memory-context-visibility",
+  "module": "bee_bug_hunter/logging_memory.py",
+  "description": "LoggingMemory (UnconstrainedMemory subclass) logs every message added/removed/reset in an agent's context into the same JSONL stream, tagged with the agent name and ambient run_id — otherwise 'what actually went into an agent's context' is only inspectable with a debugger. Previews render tool calls/results by content type because message.text is empty for them.",
+  "invariants": [
+    "add_many() funnels through add() in BaseMemory, so overriding add/delete/reset covers every mutation path",
+    "clone() must return a LoggingMemory preserving agent_name (HandoffTool clones worker memory on delegation)"
+  ],
+  "contracts": [
+    "Emits memory_message_added / memory_message_removed / memory_reset events with role, 200-char preview, and memory_size"
+  ],
+  "confidence": 0.95,
+  "evidence": [
+    "bee_bug_hunter/logging_memory.py:45-81"
+  ],
+  "related": [
+    "logging-jsonl-run-id-contextvar",
+    "agents-six-worker-roster"
+  ],
+  "last_validated": "2026-07-14T17:06:47.806723+00:00"
+}

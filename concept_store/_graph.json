@@ -1,0 +1,156 @@
+{
+  "repo": "21036a71",
+  "commit": "21036a71f9da7df2fd2628d0c24fbc6c39cde586",
+  "node_count": 30,
+  "edge_count": 88,
+  "adjacency": {
+    "agents-six-worker-roster": [
+      "manager-delegation-only-supervisor",
+      "llm-provider-switch",
+      "logging-memory-context-visibility",
+      "anomaly-tool-heuristic-not-gate"
+    ],
+    "agents-static-roster-metadata": [
+      "agents-six-worker-roster",
+      "tui-thread-and-logging-integration"
+    ],
+    "anomaly-detector-deterministic-routing": [
+      "tool-capture-raw-json-via-emitter",
+      "anomaly-tool-heuristic-not-gate",
+      "known-issues-batch-pass-registry",
+      "orchestrator-flow-run-lifecycle"
+    ],
+    "anomaly-tool-heuristic-not-gate": [
+      "anomaly-detector-deterministic-routing",
+      "agents-six-worker-roster"
+    ],
+    "api-flows-registry-shape-parity": [
+      "playwright-flow-yaml-steps",
+      "manager-flow-kind-selects-runner-tool"
+    ],
+    "claude-cli-root-fork-session-topology": [
+      "cli-text-bridge-protocol",
+      "cli-session-crash-recovery-clearing",
+      "llm-provider-switch",
+      "llm-sequential-tool-calls-guarantee"
+    ],
+    "cli-session-crash-recovery-clearing": [
+      "claude-cli-root-fork-session-topology",
+      "orchestrator-batch-pass-resets"
+    ],
+    "cli-text-bridge-protocol": [
+      "claude-cli-root-fork-session-topology",
+      "copilot-cli-capability-gaps"
+    ],
+    "config-shared-constants": [
+      "llm-provider-switch",
+      "reports-markdown-per-run",
+      "manager-flow-kind-selects-runner-tool"
+    ],
+    "copilot-cli-capability-gaps": [
+      "cli-text-bridge-protocol",
+      "llm-provider-switch"
+    ],
+    "delegation-capture-worker-output": [
+      "orchestrator-flow-run-lifecycle",
+      "tool-capture-raw-json-via-emitter",
+      "manager-delegation-only-supervisor",
+      "tui-thread-and-logging-integration"
+    ],
+    "docker-log-since-window": [
+      "manager-conditional-ordering",
+      "orchestrator-flow-run-lifecycle"
+    ],
+    "known-issues-batch-pass-registry": [
+      "orchestrator-batch-pass-resets",
+      "anomaly-detector-deterministic-routing"
+    ],
+    "llm-provider-switch": [
+      "llm-sequential-tool-calls-guarantee",
+      "agents-six-worker-roster",
+      "claude-cli-root-fork-session-topology",
+      "copilot-cli-capability-gaps",
+      "config-shared-constants"
+    ],
+    "llm-sequential-tool-calls-guarantee": [
+      "llm-provider-switch",
+      "manager-conditional-ordering",
+      "claude-cli-root-fork-session-topology"
+    ],
+    "logging-jsonl-run-id-contextvar": [
+      "logging-memory-context-visibility",
+      "orchestrator-framework-error-boundary",
+      "tui-thread-and-logging-integration"
+    ],
+    "logging-memory-context-visibility": [
+      "logging-jsonl-run-id-contextvar",
+      "agents-six-worker-roster"
+    ],
+    "manager-conditional-ordering": [
+      "manager-delegation-only-supervisor",
+      "docker-log-since-window",
+      "orchestrator-flow-run-lifecycle"
+    ],
+    "manager-delegation-only-supervisor": [
+      "manager-conditional-ordering",
+      "manager-flow-kind-selects-runner-tool",
+      "agents-six-worker-roster",
+      "delegation-capture-worker-output",
+      "llm-sequential-tool-calls-guarantee"
+    ],
+    "manager-flow-kind-selects-runner-tool": [
+      "manager-delegation-only-supervisor",
+      "playwright-flow-yaml-steps",
+      "api-flows-registry-shape-parity"
+    ],
+    "mysql-schema-introspection-cache": [
+      "mysql-tool-read-only-gate",
+      "orchestrator-batch-pass-resets"
+    ],
+    "mysql-tool-read-only-gate": [
+      "mysql-schema-introspection-cache"
+    ],
+    "orchestrator-batch-pass-resets": [
+      "orchestrator-flow-run-lifecycle",
+      "cli-session-crash-recovery-clearing",
+      "mysql-schema-introspection-cache",
+      "read-source-docker-cp-scratch",
+      "known-issues-batch-pass-registry"
+    ],
+    "orchestrator-flow-run-lifecycle": [
+      "orchestrator-batch-pass-resets",
+      "orchestrator-framework-error-boundary",
+      "tool-capture-raw-json-via-emitter",
+      "delegation-capture-worker-output",
+      "anomaly-detector-deterministic-routing",
+      "reports-markdown-per-run",
+      "manager-delegation-only-supervisor"
+    ],
+    "orchestrator-framework-error-boundary": [
+      "orchestrator-flow-run-lifecycle",
+      "logging-jsonl-run-id-contextvar"
+    ],
+    "playwright-flow-yaml-steps": [
+      "manager-flow-kind-selects-runner-tool",
+      "api-flows-registry-shape-parity"
+    ],
+    "read-source-docker-cp-scratch": [
+      "orchestrator-batch-pass-resets"
+    ],
+    "reports-markdown-per-run": [
+      "orchestrator-flow-run-lifecycle",
+      "config-shared-constants"
+    ],
+    "tool-capture-raw-json-via-emitter": [
+      "delegation-capture-worker-output",
+      "orchestrator-flow-run-lifecycle",
+      "anomaly-detector-deterministic-routing"
+    ],
+    "tui-thread-and-logging-integration": [
+      "orchestrator-flow-run-lifecycle",
+      "delegation-capture-worker-output",
+      "agents-static-roster-metadata",
+      "logging-jsonl-run-id-contextvar"
+    ]
+  }
+}

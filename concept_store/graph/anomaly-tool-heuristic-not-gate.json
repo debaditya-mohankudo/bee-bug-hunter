@@ -1,0 +1,21 @@
+{
+  "name": "anomaly-tool-heuristic-not-gate",
+  "module": "bee_bug_hunter/tools/anomaly_tool.py",
+  "description": "AnomalyCheckTool wraps the deterministic anomaly_detector as a tool for the Bug Analyst — a cheap first-pass hint, not a verdict or gate. The analyst is forced to call it at step 1 (agents.py's force_at_step=1) but is free to disagree with its output.",
+  "invariants": [
+    "The tool description must keep framing the result as a heuristic hint so the analyst still judges the raw output itself"
+  ],
+  "contracts": [
+    "Returns repr() of AnomalySignals.to_dict() over the two raw JSON inputs"
+  ],
+  "confidence": 0.94,
+  "evidence": [
+    "bee_bug_hunter/tools/anomaly_tool.py:1-31",
+    "bee_bug_hunter/agents.py:101"
+  ],
+  "related": [
+    "anomaly-detector-deterministic-routing",
+    "agents-six-worker-roster"
+  ],
+  "last_validated": "2026-07-14T17:06:47.812916+00:00"
+}

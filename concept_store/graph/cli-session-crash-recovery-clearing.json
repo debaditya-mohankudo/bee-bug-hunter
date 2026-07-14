@@ -1,0 +1,20 @@
+{
+  "name": "cli-session-crash-recovery-clearing",
+  "module": "bee_bug_hunter/claude_cli_llm.py",
+  "description": "clear_persisted_sessions() (mirrored in copilot_cli_llm.py) wipes the on-disk session store and in-memory instances at the top of every run_batch_once pass. A killed run — or simply a prior poll cycle in continuous mode — leaves a CLI-side session history ahead of BeeAI's always-fresh in-memory RequirementAgentRunState: the manager's session 'remembers' a completed flow_runner call, tries to skip to log_capturer, and gets structurally rejected by ConditionalRequirement with no clean recovery. Clearing is chosen over reconciling the two states on the fly.",
+  "invariants": [
+    "Both CLI providers must be cleared per batch pass, not just at process startup — the cache otherwise survives poll cycles within one process"
+  ],
+  "contracts": [],
+  "confidence": 0.95,
+  "evidence": [
+    "bee_bug_hunter/claude_cli_llm.py:109-124",
+    "bee_bug_hunter/copilot_cli_llm.py:111-119",
+    "bee_bug_hunter/orchestrator.py:151-166"
+  ],
+  "related": [
+    "claude-cli-root-fork-session-topology",
+    "orchestrator-batch-pass-resets"
+  ],
+  "last_validated": "2026-07-14T17:06:47.815391+00:00"
+}

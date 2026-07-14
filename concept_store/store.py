@@ -20,6 +20,9 @@ class ConceptStore:
         contracts   — list[str] of promises to callers
         confidence  — float 0.0–1.0
         evidence    — list[str] of "file:line" references
+        related     — list[str] of other concept names this one is coupled to
+                      (same relationship the "related" column plays for memories
+                      in MEMORY.sqlite — see export_graph.py)
         last_validated — ISO timestamp
         created_at     — ISO timestamp
     """
@@ -57,6 +60,7 @@ class ConceptStore:
             "contracts":      concept.get("contracts", []),
             "confidence":     concept.get("confidence", 0.0),
             "evidence":       concept.get("evidence", []),
+            "related":        concept.get("related", []),
             "last_validated": now,
             "created_at":     existing.get("created_at", now),
         }

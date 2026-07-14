@@ -1,0 +1,22 @@
+{
+  "name": "docker-log-since-window",
+  "module": "bee_bug_hunter/tools/docker_log_tool.py",
+  "description": "DockerLogCaptureTool runs `docker logs -f --since <window>s` per container into .captures/ files, waits duration_seconds, SIGTERMs, and returns the last 8000 chars per container. The --since lookback is derived from the flow's own duration (duration * 3, floored at 60s), not 0s or a flat constant: workers run sequentially, so the flow's output predates capture start, and long flows need proportionally longer lookback.",
+  "invariants": [
+    "--since must never be 0s while delegation stays sequential — 'from now on' would miss everything the flow already emitted",
+    "A docker_host override sets DOCKER_HOST only in the subprocess env; None means the ambient docker context"
+  ],
+  "contracts": [
+    "Returns JSON {container: {log_path, content}} — the shape anomaly_detector iterates over for error/slow-line scanning"
+  ],
+  "confidence": 0.96,
+  "evidence": [
+    "bee_bug_hunter/tools/docker_log_tool.py:19-33",
+    "bee_bug_hunter/tools/docker_log_tool.py:42-94"
+  ],
+  "related": [
+    "manager-conditional-ordering",
+    "orchestrator-flow-run-lifecycle"
+  ],
+  "last_validated": "2026-07-14T17:06:47.809791+00:00"
+}

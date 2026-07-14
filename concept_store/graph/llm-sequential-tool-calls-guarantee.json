@@ -1,0 +1,21 @@
+{
+  "name": "llm-sequential-tool-calls-guarantee",
+  "module": "bee_bug_hunter/llm.py",
+  "description": "Every provider is constructed with allow_parallel_tool_calls=False. This flag — not async-vs-sync tool execution — is the actual guarantee that the manager's sequential-delegation design holds: if a model requested two handoffs in one turn, BeeAI's run_tools() would execute them concurrently via asyncio.gather (e.g. Docker Log Capturer starting before the Flow Runner produced anything to capture).",
+  "invariants": [
+    "_SEQUENTIAL_TOOL_CALLS must be passed to every provider constructed in get_chat_model(), including new ones, even providers structurally incapable of >1 tool call per turn (belt-and-suspenders)",
+    "ClaudeCLIChatModel.clone() returning self is only safe because delegations are sequential — concurrent same-role delegations would race on _sent_message_count/_session_started"
+  ],
+  "contracts": [],
+  "confidence": 0.97,
+  "evidence": [
+    "bee_bug_hunter/llm.py:20-29",
+    "bee_bug_hunter/claude_cli_llm.py:245-258"
+  ],
+  "related": [
+    "llm-provider-switch",
+    "manager-conditional-ordering",
+    "claude-cli-root-fork-session-topology"
+  ],
+  "last_validated": "2026-07-14T17:06:47.800031+00:00"
+}

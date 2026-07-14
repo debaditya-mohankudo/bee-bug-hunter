@@ -1,0 +1,27 @@
+{
+  "name": "orchestrator-flow-run-lifecycle",
+  "module": "bee_bug_hunter/orchestrator.py",
+  "description": "run_flow_once is sync: it sets a fresh run_id contextvar via new_run_context(), builds the supervisor, and drives it with asyncio.run — which copies the current context, so the run_id is visible to every tool-level log line inside the supervisor's loop. After the run it assembles the report dict from tool_capture (raw JSON, preferred) falling back to delegation_capture (LLM prose), computes deterministic anomaly signals, saves a markdown report, and clears both capture registries.",
+  "invariants": [
+    "Anomaly signals are computed from the raw tool JSON recorded by tool_capture, never primarily from worker prose — delegation_capture output is a last-resort fallback only",
+    "delegation_capture.clear(run_id) and tool_capture.clear(run_id) run on every exit path, success and failure alike",
+    "supervisor.run() returns a BeeAI Run (awaitable, not a coroutine) and must be awaited inside a real coroutine for asyncio.run"
+  ],
+  "contracts": [
+    "Returns {flow, run_id, response, anomaly, bug_report, perf_report, report_path}; tui.py's Anomaly/Results screens consume exactly this shape"
+  ],
+  "confidence": 0.96,
+  "evidence": [
+    "bee_bug_hunter/orchestrator.py:46-145"
+  ],
+  "related": [
+    "orchestrator-batch-pass-resets",
+    "orchestrator-framework-error-boundary",
+    "tool-capture-raw-json-via-emitter",
+    "delegation-capture-worker-output",
+    "anomaly-detector-deterministic-routing",
+    "reports-markdown-per-run",
+    "manager-delegation-only-supervisor"
+  ],
+  "last_validated": "2026-07-14T17:06:47.800750+00:00"
+}

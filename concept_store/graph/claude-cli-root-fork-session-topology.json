@@ -1,0 +1,28 @@
+{
+  "name": "claude-cli-root-fork-session-topology",
+  "module": "bee_bug_hunter/claude_cli_llm.py",
+  "description": "ClaudeCLIChatModel shells to `claude -p --safe-mode --tools none` per reasoning step, reusing the caller's Claude Code OAuth login. Prompt caching comes from session topology: one shared role-agnostic 'root' session per flow (generic framing, no tool schemas), each role forking its own session off it on first call (--resume <root> --fork-session) and resuming its own fork thereafter, sending only messages appended since the previous call. Not one shared session across roles: each role's system prompt carries a different tool schema, and mixing them would leave stale schemas in shared history.",
+  "invariants": [
+    "Per-(flow, role) singleton instances (_instances + for_role()) are what make clone()-returns-self safe — HandoffTool clones the agent's llm on every delegation, which would otherwise cold-start a session per delegation",
+    "A role's session_id is persisted to disk (.claude_cli_sessions.json) the moment the CLI assigns it, so restarts resume rather than orphan sessions",
+    "A sessionless subprocess per call has no prefix for Anthropic's prompt cache to hit — the pre-session design was cold every call"
+  ],
+  "contracts": [
+    "_create() converts a {\"final_answer\": ...} reply on a required-tool turn into a final_answer tool call locally instead of failing and paying for a retry (the dominant missed_required_tool_call shape was well-formed final answers)",
+    "missed_required_tool_call outcomes are logged with a raw_preview to distinguish 'never attempted' from 'attempted but unparseable'"
+  ],
+  "confidence": 0.95,
+  "evidence": [
+    "bee_bug_hunter/claude_cli_llm.py:12-31",
+    "bee_bug_hunter/claude_cli_llm.py:183-216",
+    "bee_bug_hunter/claude_cli_llm.py:309-327",
+    "bee_bug_hunter/claude_cli_llm.py:373-398"
+  ],
+  "related": [
+    "cli-text-bridge-protocol",
+    "cli-session-crash-recovery-clearing",
+    "llm-provider-switch",
+    "llm-sequential-tool-calls-guarantee"
+  ],
+  "last_validated": "2026-07-14T17:06:47.814599+00:00"
+}

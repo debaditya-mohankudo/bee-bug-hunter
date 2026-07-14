@@ -1,0 +1,24 @@
+{
+  "name": "llm-provider-switch",
+  "module": "bee_bug_hunter/llm.py",
+  "description": "get_chat_model() is the single provider abstraction: LLM_PROVIDER env var selects ollama (default) / openai / anthropic / claude_cli / copilot_cli. role/flow_name/containers only matter to the CLI-shelling providers' per-(flow, role) session singletons; every other provider constructs fresh per call and ignores them.",
+  "invariants": [
+    "Unknown LLM_PROVIDER values raise ValueError rather than silently defaulting",
+    "Model-name defaults come from config.py constants; real credentials stay .env-only with no default"
+  ],
+  "contracts": [
+    "Always returns a beeai_framework ChatModel"
+  ],
+  "confidence": 0.96,
+  "evidence": [
+    "bee_bug_hunter/llm.py:32-75"
+  ],
+  "related": [
+    "llm-sequential-tool-calls-guarantee",
+    "agents-six-worker-roster",
+    "claude-cli-root-fork-session-topology",
+    "copilot-cli-capability-gaps",
+    "config-shared-constants"
+  ],
+  "last_validated": "2026-07-14T17:06:47.799318+00:00"
+}

@@ -1,0 +1,23 @@
+{
+  "name": "logging-jsonl-run-id-contextvar",
+  "module": "bee_bug_hunter/logging_config.py",
+  "description": "All logging is single-line JSON (stdout always, plus rotating logs/bee_bug_hunter.jsonl) with run_id and flow carried by contextvars rather than threaded-through parameters — tool _run() methods are invoked by BeeAI's runtime, which doesn't allow extra args, and BeeAI's asyncio loop propagates contextvars across awaits. new_run_context(flow_name) is called once per flow run to scope everything downstream.",
+  "invariants": [
+    "Every log line is one JSON object (aggregator-friendly); structured fields ride in extra={'extra_fields': ...} via the log() helper",
+    "This module deliberately replaces beeai_framework.logger, which lacks JSON output, rotation, and run correlation — revisit only if BeeAI's Logger gains structured output"
+  ],
+  "contracts": [
+    "new_run_context() returns a 12-hex run_id and sets run_id/flow contextvars; grep '\"run_id\": \"<id>\"' reconstructs one run end to end"
+  ],
+  "confidence": 0.97,
+  "evidence": [
+    "bee_bug_hunter/logging_config.py:19-20",
+    "bee_bug_hunter/logging_config.py:68-79"
+  ],
+  "related": [
+    "logging-memory-context-visibility",
+    "orchestrator-framework-error-boundary",
+    "tui-thread-and-logging-integration"
+  ],
+  "last_validated": "2026-07-14T17:06:47.805976+00:00"
+}

@@ -1,0 +1,25 @@
+{
+  "name": "cli-text-bridge-protocol",
+  "module": "bee_bug_hunter/cli_tool_protocol.py",
+  "description": "The CLI-agnostic half of the hand-rolled tool-calling bridge shared by claude_cli_llm.py and copilot_cli_llm.py: tool schemas are described in prompt text, the model replies with {\"tool\": ..., \"args\": {...}} or {\"final_answer\": ...} JSON, and the backends translate that into native MessageToolCallContent so BeeAI's own loop executes tools. Holds the protocol/instruction constants, JSON extraction, tool description, and message flattening.",
+  "invariants": [
+    "extract_json_object prefers protocol-shaped candidates (has 'tool' or 'final_answer') over 'first span that parses' — prose often quotes valid JSON of its own (e.g. HTTP error bodies)",
+    "Balanced-brace scanning (string/escape aware) replaced the greedy first-{-to-last-} regex that silently blobbed responses containing quoted braces",
+    "Last resort is beeai_framework's own parse_broken_json repair, accepted only if protocol-shaped"
+  ],
+  "contracts": [
+    "flatten_messages() returns (system_prompt, conversation_prompt); callers pass only messages new since the last invocation once a session is underway",
+    "Two 'required' instruction variants exist because BeeAI's 'required' usually still allows finishing via the final_answer tool — forbidding final_answer outright punished models for legitimately being done (the dominant missed-call failure mode was well-formed final_answer JSON)"
+  ],
+  "confidence": 0.96,
+  "evidence": [
+    "bee_bug_hunter/cli_tool_protocol.py:44-60",
+    "bee_bug_hunter/cli_tool_protocol.py:63-138",
+    "bee_bug_hunter/cli_tool_protocol.py:154-177"
+  ],
+  "related": [
+    "claude-cli-root-fork-session-topology",
+    "copilot-cli-capability-gaps"
+  ],
+  "last_validated": "2026-07-14T17:06:47.813700+00:00"
+}

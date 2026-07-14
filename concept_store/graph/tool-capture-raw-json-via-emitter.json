@@ -1,0 +1,24 @@
+{
+  "name": "tool-capture-raw-json-via-emitter",
+  "module": "bee_bug_hunter/tool_capture.py",
+  "description": "Subscribes once (idempotent install()) to BeeAI's root Emitter and records the unfiltered StringToolOutput of run_playwright_flow / run_api_flow (shared 'flow' slot) and capture_docker_logs ('logs' slot) on ToolSuccessEvent, keyed by run_id. Exists because anomaly_detector.detect() parses raw tool JSON, and worker delegation answers are LLM prose that usually isn't parseable JSON.",
+  "invariants": [
+    "install() is idempotent per process — orchestrator.py and tui.py both call it",
+    "Emitter callbacks fire synchronously inside the tool's own asyncio task, so the run_id contextvar is visible — the same correlation mechanism as JSONL logging",
+    "Both flow-runner tools must keep identically shaped output to legitimately share the 'flow' slot"
+  ],
+  "contracts": [
+    "get_flow_raw/get_log_raw return the MOST RECENT successful output for the run (a tool can run more than once; the last run reflects the state the report describes), or None if the tool never succeeded"
+  ],
+  "confidence": 0.96,
+  "evidence": [
+    "bee_bug_hunter/tool_capture.py:25-29",
+    "bee_bug_hunter/tool_capture.py:36-65"
+  ],
+  "related": [
+    "delegation-capture-worker-output",
+    "orchestrator-flow-run-lifecycle",
+    "anomaly-detector-deterministic-routing"
+  ],
+  "last_validated": "2026-07-14T17:06:47.803707+00:00"
+}

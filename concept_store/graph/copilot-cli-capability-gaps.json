@@ -1,0 +1,23 @@
+{
+  "name": "copilot-cli-capability-gaps",
+  "module": "bee_bug_hunter/copilot_cli_llm.py",
+  "description": "CopilotCLIChatModel is the same text-bridge idea shelled to `copilot -p`, with two capability gaps worked around: (1) no `--tools none` equivalent — tool execution is genuinely prevented only by `--excluded-tools=<every built-in tool name>` plus `--disable-builtin-mcps` (an empty `--available-tools=` alone was verified NOT to stop real shell execution; excluded-tool hallucinations show up as prose the JSON protocol parser ignores); (2) no `--append-system-prompt`/`--fork-session` — system+user text fold into one combined -p argument and each role's session starts cold rather than forking from a shared root, keeping only per-role --resume reuse.",
+  "invariants": [
+    "_EXCLUDED_TOOLS must track the CLI's full built-in tool list — any tool missing from it is executable on this host",
+    "resolved_model/premium_requests are read off the CLI's JSONL event stream because with model='auto' our own model= field would just log the literal string 'auto' forever"
+  ],
+  "contracts": [
+    "The last assistant.message event in the JSONL stream is the model's final reply for the call"
+  ],
+  "confidence": 0.95,
+  "evidence": [
+    "bee_bug_hunter/copilot_cli_llm.py:15-33",
+    "bee_bug_hunter/copilot_cli_llm.py:66-77",
+    "bee_bug_hunter/copilot_cli_llm.py:274-337"
+  ],
+  "related": [
+    "cli-text-bridge-protocol",
+    "llm-provider-switch"
+  ],
+  "last_validated": "2026-07-14T17:06:47.816166+00:00"
+}

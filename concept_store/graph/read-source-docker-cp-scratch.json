@@ -1,0 +1,22 @@
+{
+  "name": "read-source-docker-cp-scratch",
+  "module": "bee_bug_hunter/tools/read_source_tool.py",
+  "description": "ReadSourceFileTool reads app source out of the running container itself (not a hardcoded local checkout — a real target may be remote with no local source): discovers the source root via `docker inspect` WorkingDir, copies it once per container with `docker cp` into a tempdir scratch cache, and serves reads from that copy, capped at 400 lines.",
+  "invariants": [
+    "Path traversal is blocked — the resolved target must stay under the container's copied source root",
+    "clear_scratch_cache() must run every batch pass: a container rebuilt with a real fix between poll cycles would otherwise be 'confirmed' buggy from stale cached source forever"
+  ],
+  "contracts": [
+    "Returns file content (possibly truncated with a line-count note) or an 'error: ...' string — never raises"
+  ],
+  "confidence": 0.96,
+  "evidence": [
+    "bee_bug_hunter/tools/read_source_tool.py:34-58",
+    "bee_bug_hunter/tools/read_source_tool.py:83-99",
+    "bee_bug_hunter/tools/read_source_tool.py:102-108"
+  ],
+  "related": [
+    "orchestrator-batch-pass-resets"
+  ],
+  "last_validated": "2026-07-14T17:06:47.811355+00:00"
+}
