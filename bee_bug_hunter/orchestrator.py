@@ -16,6 +16,7 @@ from bee_bug_hunter.known_issues import compute_fingerprint, note_for, record_is
 from bee_bug_hunter.logging_config import get_logger, log, new_run_context
 from bee_bug_hunter.manager import build_supervisor
 from bee_bug_hunter.reports import save_report
+from bee_bug_hunter.tools.mysql_tool import clear_explain_cache
 
 _SUMMARY_LINE_PATTERN = re.compile(r"^SUMMARY:\s*(.+)$", re.MULTILINE)
 
@@ -162,6 +163,12 @@ def run_batch_once(manifest: dict) -> list[dict]:
         from bee_bug_hunter.copilot_cli_llm import clear_persisted_sessions
 
         clear_persisted_sessions()
+
+    # Same per-batch-pass lifetime as known_issues below, same reason: a fresh
+    # poll cycle's schema/indexes shouldn't be assumed unchanged from the last
+    # one. Module-level cache (see mysql_tool.py) shared across every flow and
+    # every MySQLQueryTool instance automatically -- this just resets it.
+    clear_explain_cache()
 
     # Fresh every batch pass, discarded at the end -- never persisted across poll
     # cycles or process restarts (see known_issues.py's module docstring for why).

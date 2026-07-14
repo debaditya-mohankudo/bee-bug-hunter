@@ -7,6 +7,7 @@ import re
 import time
 
 import pymysql
+from beeai_framework.cache.unconstrained_cache import UnconstrainedCache
 from beeai_framework.emitter import Emitter
 from beeai_framework.tools import StringToolOutput, Tool, ToolRunOptions
 from pydantic import BaseModel, Field
@@ -15,7 +16,33 @@ from bee_bug_hunter.config import APP_DB_CONN
 from bee_bug_hunter.logging_config import get_logger, log
 
 WRITE_KEYWORDS = re.compile(r"^\s*(insert|update|delete|drop|alter|truncate|create)\b", re.IGNORECASE)
+EXPLAIN_KEYWORD = re.compile(r"^\s*explain\b", re.IGNORECASE)
 logger = get_logger(__name__)
+
+# Module-level, shared by every MySQLQueryTool instance -- both the DB Query
+# Agent's and SQL Performance Agent's, across every flow in the same
+# orchestrator.run_batch_once pass. A query PLAN (index used, access type,
+# estimated rows) is driven by schema/index/table stats, not live row
+# content, so it can't go stale within a batch pass the way a plain SELECT's
+# *data* could -- keyed on (resolved connection, exact query text), not just
+# query text, because different flows can point at different databases (see
+# manifest.yaml's mysql: override) and two flows both running
+# "EXPLAIN SELECT * FROM orders" against different DBs must not collide.
+# Cleared at the top of every run_batch_once pass via clear_explain_cache()
+# (mirroring claude_cli_llm.py/copilot_cli_llm.py's clear_persisted_sessions()
+# -- nothing should assume a fresh poll cycle's schema is unchanged from the
+# last one). Plain SELECTs deliberately bypass this cache (see
+# MySQLQueryTool._run): unlike a plan, row content can legitimately change
+# between calls within the same investigation.
+_explain_cache: UnconstrainedCache[str] = UnconstrainedCache()
+
+
+def clear_explain_cache() -> None:
+    """Call at the top of every run_batch_once pass -- see _explain_cache's
+    module-level comment for why. Rebinds to a fresh instance rather than
+    awaiting UnconstrainedCache.clear() (async), since callers here are sync."""
+    global _explain_cache
+    _explain_cache = UnconstrainedCache()
 
 
 class RunQueryInput(BaseModel):
@@ -49,6 +76,13 @@ class MySQLQueryTool(Tool[RunQueryInput, ToolRunOptions, StringToolOutput]):
         self.password = password
         self.database = database
 
+    def _resolved_connection(self) -> dict:
+        return {
+            "host": self.host or os.getenv("MYSQL_HOST", APP_DB_CONN["host"]),
+            "port": self.port or int(os.getenv("MYSQL_PORT", str(APP_DB_CONN["port"]))),
+            "database": self.database or os.getenv("MYSQL_DATABASE", APP_DB_CONN["database"]),
+        }
+
     def _create_emitter(self) -> Emitter:
         return Emitter.root().child(namespace=["tool", "run_mysql_query"], creator=self)
 
@@ -57,12 +91,11 @@ class MySQLQueryTool(Tool[RunQueryInput, ToolRunOptions, StringToolOutput]):
             log(logger, logging.WARNING, "mysql_query_refused", reason="write_keyword_detected", query=query)
             return json.dumps({"error": "refused: only read-only SELECT queries are allowed"})
 
+        connection = self._resolved_connection()
         conn = pymysql.connect(
-            host=self.host or os.getenv("MYSQL_HOST", APP_DB_CONN["host"]),
-            port=self.port or int(os.getenv("MYSQL_PORT", str(APP_DB_CONN["port"]))),
+            **connection,
             user=self.user or os.getenv("MYSQL_USER", APP_DB_CONN["user"]),
             password=self.password if self.password is not None else os.getenv("MYSQL_PASSWORD", APP_DB_CONN["password"]),
-            database=self.database or os.getenv("MYSQL_DATABASE", APP_DB_CONN["database"]),
             cursorclass=pymysql.cursors.DictCursor,
             connect_timeout=5,
         )
@@ -82,5 +115,19 @@ class MySQLQueryTool(Tool[RunQueryInput, ToolRunOptions, StringToolOutput]):
             conn.close()
 
     async def _run(self, input: RunQueryInput, options, context) -> StringToolOutput:
-        result = await asyncio.to_thread(self._query_sync, input.query)
+        query = input.query
+        is_explain = bool(EXPLAIN_KEYWORD.match(query))
+        connection = self._resolved_connection()
+        cache_key = f"{connection['host']}:{connection['port']}/{connection['database']}::{query.strip()}"
+
+        cached_result = await _explain_cache.get(cache_key) if is_explain else None
+        if cached_result is not None:
+            log(logger, logging.INFO, "mysql_query_explain_cached", query=query)
+            return StringToolOutput(cached_result)
+
+        result = await asyncio.to_thread(self._query_sync, query)
+
+        if is_explain and json.loads(result).get("error") is None:
+            await _explain_cache.set(cache_key, result)
+
         return StringToolOutput(result)

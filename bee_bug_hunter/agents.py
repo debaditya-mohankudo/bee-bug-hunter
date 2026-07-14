@@ -26,7 +26,9 @@ def build_agents(
     (claude_cli's per-flow root+fork session topology, see claude_cli_llm.py;
     copilot_cli's per-(flow, role) session, see copilot_cli_llm.py -- containers
     is unused there since it has no shared-root session to seed); every other
-    provider ignores them."""
+    provider ignores them. MySQLQueryTool's EXPLAIN cache is module-level (see
+    mysql_tool.py), not threaded through here -- every instance built below
+    shares it automatically."""
     # A separate get_chat_model(role=...) call per worker rather than one shared llm:
     # for the CLI-shelling providers this gives each role its own session singleton
     # (see llm.py), keeping workers isolated from each other instead of bleeding
