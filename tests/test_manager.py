@@ -72,6 +72,14 @@ def test_ui_flow_kind_selects_run_playwright_flow_tool():
     assert "demo_login" in prompt
 
 
+def test_script_flow_kind_selects_run_playwright_script_tool():
+    _supervisor, prompt = build_supervisor(
+        "demo_login", "demo_app-web-1", 5, flow_kind="script", api_flow_name="example_login_script"
+    )
+    assert "run_playwright_script" in prompt
+    assert "example_login_script" in prompt
+
+
 def test_known_issue_note_is_prepended_to_prompt():
     _supervisor, prompt = build_supervisor(
         "demo_login", "demo_app-web-1", 5, known_issue_note="passwd vs password column bug in api_login"

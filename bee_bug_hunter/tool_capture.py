@@ -20,10 +20,11 @@ from beeai_framework.tools.events import ToolSuccessEvent
 
 from bee_bug_hunter.logging_config import run_id_var
 
-# tool name -> capture slot; both flow-runner tools share the "flow" slot since
-# anomaly_detector treats their (identically shaped) output the same way.
+# tool name -> capture slot; all three flow-runner tools share the "flow" slot
+# since anomaly_detector treats their (identically shaped) output the same way.
 _SLOT_BY_TOOL = {
     "run_playwright_flow": "flow",
+    "run_playwright_script": "flow",
     "run_api_flow": "flow",
     "capture_docker_logs": "logs",
 }

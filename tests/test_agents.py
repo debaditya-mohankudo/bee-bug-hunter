@@ -12,6 +12,7 @@ from bee_bug_hunter.tools.anomaly_tool import AnomalyCheckTool
 from bee_bug_hunter.tools.api_request_tool import ApiRequestFlowTool
 from bee_bug_hunter.tools.docker_log_tool import DockerLogCaptureTool
 from bee_bug_hunter.tools.mysql_tool import MySQLQueryTool
+from bee_bug_hunter.tools.playwright_script_tool import RunPlaywrightScriptTool
 from bee_bug_hunter.tools.playwright_tool import PlaywrightFlowTool
 from bee_bug_hunter.tools.read_source_tool import ReadSourceFileTool
 
@@ -38,7 +39,7 @@ def test_build_agents_returns_all_six_workers(workers):
 
 def test_flow_runner_has_playwright_and_api_tools(workers):
     tool_types = {type(t) for t in workers["flow_runner"]._tools}
-    assert tool_types == {PlaywrightFlowTool, ApiRequestFlowTool}
+    assert tool_types == {PlaywrightFlowTool, RunPlaywrightScriptTool, ApiRequestFlowTool}
 
 
 def test_log_capturer_has_docker_log_tool(workers):

@@ -12,6 +12,7 @@ from bee_bug_hunter.tools.anomaly_tool import AnomalyCheckTool
 from bee_bug_hunter.tools.api_request_tool import ApiRequestFlowTool
 from bee_bug_hunter.tools.docker_log_tool import DockerLogCaptureTool
 from bee_bug_hunter.tools.mysql_tool import MySQLQueryTool
+from bee_bug_hunter.tools.playwright_script_tool import RunPlaywrightScriptTool
 from bee_bug_hunter.tools.playwright_tool import PlaywrightFlowTool
 from bee_bug_hunter.tools.read_source_tool import ReadSourceFileTool
 
@@ -40,20 +41,22 @@ def build_agents(
         llm=get_chat_model(role="API Flow Runner", flow_name=flow_name, containers=containers),
         name="API Flow Runner",
         description=(
-            "Executes the target flow -- via Playwright for UI flows, or via a registered "
-            "Python/requests API flow for pure JSON API flows -- and reports every "
-            "request/response and step failure."
+            "Executes the target flow -- via Playwright for YAML-defined UI flows, via a plain-Python "
+            "Playwright script for UI flows needing real control flow, or via a registered Python/requests "
+            "API flow for pure JSON API flows -- and reports every request/response and step failure."
         ),
         role="API Flow Runner",
         instructions=(
             "You drive real user/API flows, following the flow's declared steps exactly. For a UI flow "
-            "you use run_playwright_flow to drive a real browser; for a pure JSON API flow (no rendering "
-            "involved) you use run_api_flow instead, which calls a registered Python/requests function "
-            "directly. You are always told which tool to use and which flow_name to pass. You never skip "
-            "steps and you report network activity faithfully — include the full network log and step "
-            "results in your answer."
+            "defined as flows/<name>.yaml you use run_playwright_flow; for a UI flow that needs real "
+            "control flow (loops, conditionals, multi-page interaction) beyond the YAML step DSL, it's "
+            "registered in playwright_flows.py and you use run_playwright_script instead; for a pure "
+            "JSON API flow (no rendering involved) you use run_api_flow, which calls a registered "
+            "Python/requests function directly. You are always told which tool to use and which "
+            "flow_name to pass. You never skip steps and you report network activity faithfully — "
+            "include the full network log and step results in your answer."
         ),
-        tools=[PlaywrightFlowTool(), ApiRequestFlowTool()],
+        tools=[PlaywrightFlowTool(), RunPlaywrightScriptTool(), ApiRequestFlowTool()],
         memory=LoggingMemory(agent_name="API Flow Runner"),
     )
 

@@ -1,7 +1,17 @@
 # List every business-case API flow to monitor and the containers backing it.
 #
 # kind: ui (default) drives bee_bug_hunter/flows/<name>.yaml via Playwright, a real
-#       browser -- for flows that render/click something.
+#       browser -- for flows that render/click something, expressed as a declarative
+#       step list (goto/click/fill/wait_for_selector/wait_for_response/expect_status/
+#       expect_text).
+# kind: script also drives a real browser via Playwright, but calls a registered plain
+#       Python async function from bee_bug_hunter/playwright_flows.py instead
+#       (api_flow: <registry name>) -- for flows that need real control flow (loops,
+#       conditionals, multi-page interaction) the YAML step DSL can't express. To add
+#       one: write an async def taking (page, network_log) in playwright_flows.py,
+#       decorate it with @playwright_flow("<registry name>"), then reference that name
+#       here as api_flow:. See playwright_flows.py:example_login_script for a
+#       step-for-step scripted rewrite of the example_login.yaml flow below.
 # kind: api skips Playwright entirely and calls a registered Python/requests function
 #       from bee_bug_hunter/api_flows.py instead (api_flow: <registry name>) -- for
 #       flows that are pure JSON API calls with nothing to render.
@@ -30,3 +40,7 @@ flows:
     kind: api
     api_flow: example_login_api
     containers: [demo-api, demo-db]
+  # - name: example_login_script    # kind: script example (commented out -- same
+  #   kind: script                  # bug as example_login above, written as a
+  #   api_flow: example_login_script  # plain Playwright script instead of YAML)
+  #   containers: [demo-api, demo-db]

@@ -26,7 +26,9 @@ def build_supervisor(
 ) -> tuple[RequirementAgent, str]:
     """Returns (supervisor agent, investigation prompt). flow_kind selects which
     Flow Runner tool the manager is told to have the worker use: 'ui' (default)
-    drives flows/<flow_name>.yaml via Playwright; 'api' calls a registered
+    drives flows/<flow_name>.yaml via Playwright; 'script' calls a registered
+    bee_bug_hunter/playwright_flows.py function (api_flow_name) for a plain-Python
+    Playwright flow instead of the YAML step DSL; 'api' calls a registered
     bee_bug_hunter/api_flows.py function (api_flow_name) via requests instead.
     known_issue_note, if given (see known_issues.py), summarizes what another
     flow already found this same batch pass on a container this flow also
@@ -84,6 +86,11 @@ def build_supervisor(
     if flow_kind == "api":
         step1 = (
             "1. Hand off to 'API Flow Runner': run the flow using its run_api_flow "
+            f"tool with flow_name='{api_flow_name}'. Get back its full network log and step results.\n"
+        )
+    elif flow_kind == "script":
+        step1 = (
+            "1. Hand off to 'API Flow Runner': run the flow using its run_playwright_script "
             f"tool with flow_name='{api_flow_name}'. Get back its full network log and step results.\n"
         )
     else:
