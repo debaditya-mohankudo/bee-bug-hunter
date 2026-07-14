@@ -16,7 +16,21 @@ from bee_bug_hunter.config import APP_DOCKER_CONN
 from bee_bug_hunter.logging_config import get_logger, log
 
 CAPTURE_DIR = Path(__file__).parent.parent.parent / ".captures"
+# --since lookback multiplier/floor for _since_window_seconds() below.
+SINCE_MULTIPLIER = 3
+SINCE_MIN_SECONDS = 60
 logger = get_logger(__name__)
+
+
+def _since_window_seconds(duration_seconds: int) -> int:
+    """How far back `docker logs --since` should look, derived from this
+    flow's own duration_seconds rather than a flat constant -- a flow
+    configured to run long (e.g. one built around a slow query) gets a
+    proportionally longer lookback automatically. SINCE_MULTIPLIER covers
+    the flow's own configured runtime plus manager/reasoning overhead before
+    and after it; SINCE_MIN_SECONDS floors short flows to at least a full
+    minute."""
+    return max(duration_seconds * SINCE_MULTIPLIER, SINCE_MIN_SECONDS)
 
 
 class CaptureDockerLogsInput(BaseModel):
@@ -28,10 +42,18 @@ class CaptureDockerLogsInput(BaseModel):
 def _capture_sync(containers: str, duration_seconds: int, run_name: str, docker_host: str | None) -> str:
     CAPTURE_DIR.mkdir(parents=True, exist_ok=True)
     container_list = [c.strip() for c in containers.split(",") if c.strip()]
+    # `--since <window>` (not `0s`) so this still captures a flow's output even when the
+    # flow ran and finished before this tool was invoked -- the supervisor delegates Flow
+    # Runner and Log Capturer sequentially, not concurrently, so "from now on" would miss
+    # logs the flow already emitted. The window is derived from this flow's own
+    # duration_seconds (see _since_window_seconds) rather than a flat constant, so a flow
+    # expected to run long -- e.g. one built around a slow query -- gets a proportionally
+    # longer lookback instead of silently losing early log lines.
+    since_seconds = _since_window_seconds(duration_seconds)
     log(
         logger, logging.INFO, "docker_capture_started",
-        containers=container_list, duration_seconds=duration_seconds, run_name=run_name,
-        docker_host=docker_host or APP_DOCKER_CONN["host"],
+        containers=container_list, duration_seconds=duration_seconds, since_seconds=since_seconds,
+        run_name=run_name, docker_host=docker_host or APP_DOCKER_CONN["host"],
     )
 
     env = os.environ.copy()
@@ -44,12 +66,8 @@ def _capture_sync(containers: str, duration_seconds: int, run_name: str, docker_
         out_path = CAPTURE_DIR / f"{run_name}_{container}.log"
         out_files[container] = out_path
         f = out_path.open("w")
-        # `--since 5m` (not `0s`) so this still captures a flow's output even when the
-        # flow ran and finished before this tool was invoked -- the supervisor delegates
-        # Flow Runner and Log Capturer sequentially, not concurrently, so "from now on"
-        # would miss logs the flow already emitted.
         proc = subprocess.Popen(
-            ["docker", "logs", "-f", "--since", "5m", container],
+            ["docker", "logs", "-f", "--since", f"{since_seconds}s", container],
             stdout=f,
             stderr=subprocess.STDOUT,
             env=env,
