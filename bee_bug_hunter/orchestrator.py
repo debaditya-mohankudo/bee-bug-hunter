@@ -7,6 +7,7 @@ import re
 import time
 
 import yaml
+from beeai_framework.errors import FrameworkError
 
 from bee_bug_hunter import delegation_capture, tool_capture
 from bee_bug_hunter.anomaly_detector import detect
@@ -19,6 +20,20 @@ from bee_bug_hunter.reports import save_report
 _SUMMARY_LINE_PATTERN = re.compile(r"^SUMMARY:\s*(.+)$", re.MULTILINE)
 
 logger = get_logger(__name__)
+
+
+def _framework_error_fields(error: FrameworkError) -> dict:
+    """error.explain() walks the full predecessor/__cause__ chain (agent ->
+    tool -> backend errors nest via `cause=`), giving a diagnosable trail
+    without a re-run. context dicts are attacker/PII-free today (nothing in
+    this codebase constructs a FrameworkError with context=), but any future
+    context= must stay query-shape-only per the mysql logging rule above."""
+    return {
+        "error_type": error.name(),
+        "is_fatal": error.fatal,
+        "is_retryable": error.retryable,
+        "error_chain": error.explain(),
+    }
 
 # Installed once at import time: from here on, every successful flow-runner /
 # log-capture tool call (for any flow run in this process) has its raw JSON
@@ -62,6 +77,20 @@ def run_flow_once(flow_cfg: dict, duration_seconds: int, known_issues: list | No
 
         output = asyncio.run(_drive())
         result = output.last_message.text
+    except FrameworkError as e:
+        # AgentError/ToolError/BackendError/ChatModelError etc. all derive from
+        # FrameworkError -- catch it first so the structured fields below are
+        # available; fall through to the bare Exception branch for anything
+        # BeeAI itself doesn't wrap (e.g. a raw httpx error before wrapping).
+        log(
+            logger, logging.ERROR, "supervisor_run_failed",
+            elapsed_s=round(time.monotonic() - started, 2),
+            **_framework_error_fields(e),
+        )
+        logger.exception("supervisor run raised a FrameworkError")
+        delegation_capture.clear(run_id)
+        tool_capture.clear(run_id)
+        raise
     except Exception:
         log(logger, logging.ERROR, "supervisor_run_failed", elapsed_s=round(time.monotonic() - started, 2))
         logger.exception("supervisor run raised")
@@ -137,8 +166,16 @@ def run_batch_once(manifest: dict) -> list[dict]:
     for flow_cfg in manifest["flows"]:
         try:
             results.append(run_flow_once(flow_cfg, duration_seconds, known_issues))
-        except Exception:
+        except FrameworkError as e:
             # one flow's failure shouldn't take down the rest of the batch;
+            # the full chain is already logged in run_flow_once -- this line
+            # just needs enough to grep alongside the flow name.
+            log(
+                logger, logging.ERROR, "flow_run_skipped_after_failure",
+                flow=flow_cfg.get("name"), **_framework_error_fields(e),
+            )
+            continue
+        except Exception:
             # the exception is already logged with full context in run_flow_once.
             log(logger, logging.ERROR, "flow_run_skipped_after_failure", flow=flow_cfg.get("name"))
             continue
