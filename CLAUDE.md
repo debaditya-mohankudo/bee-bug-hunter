@@ -109,3 +109,35 @@ grep '"run_id": "<id>"' logs/bee_bug_hunter.jsonl | jq .
 
 MySQL logging is query text + row count + timing only — row contents are never logged
 (may hold customer/PII data).
+
+## BeeAI modules: adopted vs skipped
+
+- **`beeai_framework.errors`** (`FrameworkError` and subclasses — `AgentError`, `ToolError`,
+  `BackendError`/`ChatModelError`, etc.) — **adopted**. `orchestrator.run_flow_once` /
+  `run_batch_once` catch `FrameworkError` before the generic `Exception` fallback around
+  `supervisor.run(...)`, logging `error_type`/`is_fatal`/`is_retryable` and the full cause
+  chain (`error.explain()`) as structured JSONL fields — see Observability above. Worker
+  tools (`mysql_tool.py`, `docker_log_tool.py`, `api_request_tool.py`, `playwright_tool.py`,
+  `read_source_tool.py`, `anomaly_tool.py`) deliberately do **not** raise `ToolError`: each
+  catches its own exceptions and returns `{"error": ...}` to the calling agent so the LLM
+  can see the failure and adapt/retry within the run, rather than crashing the supervisor
+  loop. `FrameworkError` adoption is scoped to the supervisor.run() boundary only.
+
+- **`beeai_framework.logger`** (`Logger`) — **skipped**. It's a thin `logging.Logger`
+  subclass with a plain-text console formatter and a custom `TRACE` level — no JSON output,
+  no file rotation, no run correlation id. Our own `logging_config.py` already does
+  strictly more (JSONL, rotating file, `run_id`/`flow` contextvars, structured
+  `**fields`), which the `FrameworkError` logging above and the Observability `run_id` grep
+  workflow both depend on. Revisit only if BeeAI's `Logger` gains structured/JSON output.
+
+- **`beeai_framework.workflows`** (`Workflow`) — **skipped, and not a fit for this
+  project's architecture**. `Workflow` is a deterministic, code-defined step graph (add
+  steps, route via `NEXT`/`PREV`/`SELF`/an explicit step name/`END`) — no LLM in the
+  routing loop. In CrewAI terms it's the equivalent of `Process.sequential` / `Flow`
+  (`@start`/`@listen`/`@router`), **not** `Process.hierarchical`. This project's
+  Investigation Manager (`manager.py`) is the hierarchical-equivalent model — an LLM
+  (`RequirementAgent`) decides delegation order at runtime via `HandoffTool`s constrained
+  by `ConditionalRequirement`s — which is what `crew-bug-hunter`'s CrewAI
+  `Process.hierarchical` did and what this port preserves. `Workflow` would only make sense
+  for a sub-piece of the pipeline that becomes fully deterministic (no agent judgment
+  needed); nothing here qualifies today.
