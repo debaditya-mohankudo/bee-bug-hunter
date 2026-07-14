@@ -16,33 +16,40 @@ from bee_bug_hunter.config import APP_DB_CONN
 from bee_bug_hunter.logging_config import get_logger, log
 
 WRITE_KEYWORDS = re.compile(r"^\s*(insert|update|delete|drop|alter|truncate|create)\b", re.IGNORECASE)
-EXPLAIN_KEYWORD = re.compile(r"^\s*explain\b", re.IGNORECASE)
+# Schema-introspection queries: EXPLAIN (query plan) and SHOW COLUMNS/SHOW
+# TABLES/SHOW INDEX/SHOW CREATE TABLE/DESCRIBE/DESC (schema shape) all
+# describe schema/index/table structure, never row content -- same
+# cacheability argument for all of them, see _schema_cache's comment below.
+SCHEMA_INTROSPECTION_KEYWORDS = re.compile(
+    r"^\s*(explain|show\s+(columns|tables|index|create\s+table)|desc(ribe)?)\b", re.IGNORECASE,
+)
 logger = get_logger(__name__)
 
 # Module-level, shared by every MySQLQueryTool instance -- both the DB Query
 # Agent's and SQL Performance Agent's, across every flow in the same
-# orchestrator.run_batch_once pass. A query PLAN (index used, access type,
-# estimated rows) is driven by schema/index/table stats, not live row
-# content, so it can't go stale within a batch pass the way a plain SELECT's
-# *data* could -- keyed on (resolved connection, exact query text), not just
-# query text, because different flows can point at different databases (see
+# orchestrator.run_batch_once pass. Schema-introspection results (a query
+# PLAN's index/access-type/estimated-rows, or a table's column/index
+# structure) are driven by schema state, not live row content, so they can't
+# go stale within a batch pass the way a plain SELECT's *data* could --
+# keyed on (resolved connection, exact query text), not just query text,
+# because different flows can point at different databases (see
 # manifest.yaml's mysql: override) and two flows both running
 # "EXPLAIN SELECT * FROM orders" against different DBs must not collide.
-# Cleared at the top of every run_batch_once pass via clear_explain_cache()
+# Cleared at the top of every run_batch_once pass via clear_schema_cache()
 # (mirroring claude_cli_llm.py/copilot_cli_llm.py's clear_persisted_sessions()
 # -- nothing should assume a fresh poll cycle's schema is unchanged from the
 # last one). Plain SELECTs deliberately bypass this cache (see
-# MySQLQueryTool._run): unlike a plan, row content can legitimately change
-# between calls within the same investigation.
-_explain_cache: UnconstrainedCache[str] = UnconstrainedCache()
+# MySQLQueryTool._run): unlike schema shape, row content can legitimately
+# change between calls within the same investigation.
+_schema_cache: UnconstrainedCache[str] = UnconstrainedCache()
 
 
-def clear_explain_cache() -> None:
-    """Call at the top of every run_batch_once pass -- see _explain_cache's
+def clear_schema_cache() -> None:
+    """Call at the top of every run_batch_once pass -- see _schema_cache's
     module-level comment for why. Rebinds to a fresh instance rather than
     awaiting UnconstrainedCache.clear() (async), since callers here are sync."""
-    global _explain_cache
-    _explain_cache = UnconstrainedCache()
+    global _schema_cache
+    _schema_cache = UnconstrainedCache()
 
 
 class RunQueryInput(BaseModel):
@@ -116,18 +123,18 @@ class MySQLQueryTool(Tool[RunQueryInput, ToolRunOptions, StringToolOutput]):
 
     async def _run(self, input: RunQueryInput, options, context) -> StringToolOutput:
         query = input.query
-        is_explain = bool(EXPLAIN_KEYWORD.match(query))
+        is_schema_introspection = bool(SCHEMA_INTROSPECTION_KEYWORDS.match(query))
         connection = self._resolved_connection()
         cache_key = f"{connection['host']}:{connection['port']}/{connection['database']}::{query.strip()}"
 
-        cached_result = await _explain_cache.get(cache_key) if is_explain else None
+        cached_result = await _schema_cache.get(cache_key) if is_schema_introspection else None
         if cached_result is not None:
-            log(logger, logging.INFO, "mysql_query_explain_cached", query=query)
+            log(logger, logging.INFO, "mysql_query_schema_cached", query=query)
             return StringToolOutput(cached_result)
 
         result = await asyncio.to_thread(self._query_sync, query)
 
-        if is_explain and json.loads(result).get("error") is None:
-            await _explain_cache.set(cache_key, result)
+        if is_schema_introspection and json.loads(result).get("error") is None:
+            await _schema_cache.set(cache_key, result)
 
         return StringToolOutput(result)

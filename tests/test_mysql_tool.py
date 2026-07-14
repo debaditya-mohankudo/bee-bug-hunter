@@ -1,23 +1,24 @@
-"""Tests for MySQLQueryTool's EXPLAIN cache: a query PLAN (index used, access
-type, estimated rows) is driven by schema/index/table stats, not live row
-content, so caching it across a batch pass is safe -- unlike a plain SELECT's
-data, which can legitimately change between calls. The cache is module-level
-(shared by every MySQLQueryTool instance/flow in the same run_batch_once
-pass), so each test clears it via clear_explain_cache() for isolation.
-pymysql is monkeypatched so no live MySQL is needed.
+"""Tests for MySQLQueryTool's schema-introspection cache: EXPLAIN (query
+plan) and SHOW COLUMNS/SHOW TABLES/SHOW INDEX/SHOW CREATE TABLE/DESCRIBE/DESC
+(schema shape) are all driven by schema/index/table state, not live row
+content, so caching them across a batch pass is safe -- unlike a plain
+SELECT's data, which can legitimately change between calls. The cache is
+module-level (shared by every MySQLQueryTool instance/flow in the same
+run_batch_once pass), so each test clears it via clear_schema_cache() for
+isolation. pymysql is monkeypatched so no live MySQL is needed.
 """
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from bee_bug_hunter.tools.mysql_tool import MySQLQueryTool, RunQueryInput, clear_explain_cache
+from bee_bug_hunter.tools.mysql_tool import MySQLQueryTool, RunQueryInput, clear_schema_cache
 
 
 @pytest.fixture(autouse=True)
-def _clean_explain_cache():
-    clear_explain_cache()
+def _clean_schema_cache():
+    clear_schema_cache()
     yield
-    clear_explain_cache()
+    clear_schema_cache()
 
 
 def _fake_connect(rows: list[dict]):
@@ -32,12 +33,12 @@ def _fake_connect(rows: list[dict]):
 
 
 async def _current_cache_size() -> int:
-    # clear_explain_cache() rebinds the module-level name to a fresh instance,
+    # clear_schema_cache() rebinds the module-level name to a fresh instance,
     # so re-import it fresh via the module rather than the name captured at
     # import time in this test file.
     from bee_bug_hunter.tools import mysql_tool
 
-    return await mysql_tool._explain_cache.size()
+    return await mysql_tool._schema_cache.size()
 
 
 @pytest.mark.asyncio
@@ -85,6 +86,30 @@ async def test_two_tool_instances_share_the_module_level_cache():
     # and both instances see the same cached result.
     assert mock_connect.call_count == 1
     assert first.get_text_content() == second.get_text_content()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "query", [
+        "SHOW COLUMNS FROM users",
+        "show columns from users",
+        "SHOW TABLES",
+        "SHOW INDEX FROM orders",
+        "SHOW CREATE TABLE users",
+        "DESCRIBE users",
+        "DESC users",
+    ],
+)
+async def test_show_and_describe_variants_are_cached_like_explain(query):
+    tool = MySQLQueryTool()
+    conn, _cursor = _fake_connect([{"Field": "id"}])
+
+    with patch("bee_bug_hunter.tools.mysql_tool.pymysql.connect", return_value=conn) as mock_connect:
+        await tool._run(RunQueryInput(query=query), None, None)
+        await tool._run(RunQueryInput(query=query), None, None)
+
+    # Second identical call is a cache hit, same as EXPLAIN.
+    assert mock_connect.call_count == 1
 
 
 @pytest.mark.asyncio

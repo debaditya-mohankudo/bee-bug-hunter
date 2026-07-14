@@ -16,7 +16,7 @@ from bee_bug_hunter.known_issues import compute_fingerprint, note_for, record_is
 from bee_bug_hunter.logging_config import get_logger, log, new_run_context
 from bee_bug_hunter.manager import build_supervisor
 from bee_bug_hunter.reports import save_report
-from bee_bug_hunter.tools.mysql_tool import clear_explain_cache
+from bee_bug_hunter.tools.mysql_tool import clear_schema_cache
 from bee_bug_hunter.tools.read_source_tool import clear_scratch_cache
 
 _SUMMARY_LINE_PATTERN = re.compile(r"^SUMMARY:\s*(.+)$", re.MULTILINE)
@@ -169,7 +169,7 @@ def run_batch_once(manifest: dict) -> list[dict]:
     # poll cycle's schema/indexes shouldn't be assumed unchanged from the last
     # one. Module-level cache (see mysql_tool.py) shared across every flow and
     # every MySQLQueryTool instance automatically -- this just resets it.
-    clear_explain_cache()
+    clear_schema_cache()
     # Same reasoning again: read_source_tool.py's docker-cp'd scratch copy
     # otherwise survives forever (across every poll cycle, not just this batch
     # pass) with no other invalidation path -- if a container gets rebuilt/
