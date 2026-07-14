@@ -7,12 +7,14 @@ from bee_bug_hunter.claude_cli_llm import ClaudeCLIChatModel
 from bee_bug_hunter.config import (
     DEFAULT_ANTHROPIC_MODEL,
     DEFAULT_CLAUDE_CLI_MODEL,
+    DEFAULT_COPILOT_CLI_MODEL,
     DEFAULT_LLM_PROVIDER,
     DEFAULT_OLLAMA_BASE_URL,
     DEFAULT_OLLAMA_MODEL,
     DEFAULT_OLLAMA_NUM_CTX,
     DEFAULT_OPENAI_MODEL,
 )
+from bee_bug_hunter.copilot_cli_llm import CopilotCLIChatModel
 
 
 # False is ChatModel's own default (beeai_framework.backend.chat.ChatModel.__init__),
@@ -42,6 +44,14 @@ def get_chat_model(role: str | None = None, flow_name: str = "default", containe
         return ClaudeCLIChatModel.for_role(
             role, model=os.getenv("CLAUDE_CLI_MODEL", DEFAULT_CLAUDE_CLI_MODEL),
             flow_name=flow_name, containers=containers, **_SEQUENTIAL_TOOL_CALLS,
+        )
+    if provider == "copilot_cli":
+        # Same belt-and-suspenders note as claude_cli above: _create() only ever
+        # parses one {"tool": ...} JSON object per CLI call, so it's structurally
+        # incapable of emitting >1 tool call per turn regardless of this flag.
+        return CopilotCLIChatModel.for_role(
+            role, model=os.getenv("COPILOT_CLI_MODEL", DEFAULT_COPILOT_CLI_MODEL),
+            flow_name=flow_name, **_SEQUENTIAL_TOOL_CALLS,
         )
     if provider == "ollama":
         from beeai_framework.adapters.ollama.backend.chat import OllamaChatModel

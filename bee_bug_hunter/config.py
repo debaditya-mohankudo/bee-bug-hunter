@@ -15,6 +15,7 @@ LLM_MODEL_ENV_VAR = {
     "openai": "OPENAI_MODEL",
     "anthropic": "ANTHROPIC_MODEL",
     "claude_cli": "CLAUDE_CLI_MODEL",
+    "copilot_cli": "COPILOT_CLI_MODEL",
 }
 
 DEFAULT_LLM_PROVIDER = "ollama"
@@ -30,6 +31,7 @@ DEFAULT_OLLAMA_NUM_CTX = 16384
 DEFAULT_OPENAI_MODEL = "gpt-4o"
 DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-5"
 DEFAULT_CLAUDE_CLI_MODEL = "sonnet"
+DEFAULT_COPILOT_CLI_MODEL = "claude-sonnet-4.5"
 
 DEFAULT_LOG_FILE = "logs/bee_bug_hunter.jsonl"
 DEFAULT_LOG_LEVEL = "INFO"
@@ -38,6 +40,11 @@ DEFAULT_LOG_LEVEL = "INFO"
 # claude_cli_llm.py's ClaudeCLIChatModel.for_role()), so a session survives process
 # restarts instead of living only in an in-memory dict that resets every run.
 DEFAULT_CLAUDE_CLI_SESSION_STORE = ".claude_cli_sessions.json"
+
+# copilot_cli only: where role -> `copilot -p` session_id is persisted (see
+# copilot_cli_llm.py's CopilotCLIChatModel.for_role()) -- same crash/restart
+# rationale as DEFAULT_CLAUDE_CLI_SESSION_STORE above.
+DEFAULT_COPILOT_CLI_SESSION_STORE = ".copilot_cli_sessions.json"
 
 # Where run_flow_once() writes one markdown report per flow run (see reports.py).
 DEFAULT_REPORTS_DIR = "reports"

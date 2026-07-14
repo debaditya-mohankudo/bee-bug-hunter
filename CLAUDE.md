@@ -89,6 +89,20 @@ prompt-cache reuse across steps. This decomposed-into-many-forced-tool-choice-st
 architecture is a better match for small/local models (`ollama`) that need heavy
 scaffolding to stay on track turn by turn.
 
+There is now also a `copilot_cli` provider (`copilot_cli_llm.py`) — the same text-bridge
+idea, shelled to `copilot -p` (GitHub Copilot CLI) with `--model claude-sonnet-4.5`
+(configurable via `COPILOT_CLI_MODEL`) instead of API credentials. It carries the same
+architectural tradeoffs called out above for `claude_cli` (no native tool calling from
+BeeAI's perspective, a subprocess per reasoning step), plus two capability gaps unique to
+this CLI: no `--tools none` equivalent (worked around via
+`--excluded-tools=<every built-in tool name>` + `--disable-builtin-mcps`, verified to
+actually prevent execution — `--available-tools=` alone does not), and no
+`--append-system-prompt`/`--fork-session` (system+user text folded into one combined `-p`
+argument; no shared-root-session cache priming across roles, only per-role `--resume`
+reuse). The CLI-agnostic half of the text-bridge protocol (JSON extraction, tool
+description, message flattening) is factored out into `cli_tool_protocol.py`, shared by
+both `claude_cli_llm.py` and `copilot_cli_llm.py`.
+
 ## Async notes
 
 - Tools are async. Playwright uses the **async** API directly; blocking work (docker

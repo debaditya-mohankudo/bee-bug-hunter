@@ -22,13 +22,15 @@ def build_agents(
 ) -> dict:
     """docker_host/mysql_cfg are per-flow overrides from manifest.yaml (see
     that file's comments): None means "use the .env default for everything".
-    flow_name/containers are only meaningful for claude_cli (its per-flow root+
-    per-role fork session topology, see claude_cli_llm.py); every other provider
-    ignores them."""
+    flow_name/containers are only meaningful for the CLI-shelling providers
+    (claude_cli's per-flow root+fork session topology, see claude_cli_llm.py;
+    copilot_cli's per-(flow, role) session, see copilot_cli_llm.py -- containers
+    is unused there since it has no shared-root session to seed); every other
+    provider ignores them."""
     # A separate get_chat_model(role=...) call per worker rather than one shared llm:
-    # for claude_cli this gives each role its own session singleton (see llm.py),
-    # keeping workers isolated from each other instead of bleeding into one shared
-    # Claude session. Other providers ignore `role` and just construct fresh each
+    # for the CLI-shelling providers this gives each role its own session singleton
+    # (see llm.py), keeping workers isolated from each other instead of bleeding
+    # into one shared session. Other providers ignore `role` and just construct fresh each
     # call, same as before.
     mysql_cfg = mysql_cfg or {}
 

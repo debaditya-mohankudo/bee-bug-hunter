@@ -157,6 +157,11 @@ def run_batch_once(manifest: dict) -> list[dict]:
         from bee_bug_hunter.claude_cli_llm import clear_persisted_sessions
 
         clear_persisted_sessions()
+    elif os.getenv("LLM_PROVIDER") == "copilot_cli":
+        # Same rationale, same fix -- see the claude_cli branch above.
+        from bee_bug_hunter.copilot_cli_llm import clear_persisted_sessions
+
+        clear_persisted_sessions()
 
     # Fresh every batch pass, discarded at the end -- never persisted across poll
     # cycles or process restarts (see known_issues.py's module docstring for why).
