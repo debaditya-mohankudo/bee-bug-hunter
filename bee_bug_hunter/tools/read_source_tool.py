@@ -100,5 +100,9 @@ class ReadSourceFileTool(Tool[ReadSourceFileInput, ToolRunOptions, StringToolOut
 
 
 def clear_scratch_cache() -> None:
-    """Test helper: wipes SCRATCH_ROOT so cached copies don't leak between test runs."""
+    """Wipes SCRATCH_ROOT so cached container source copies don't leak stale
+    state. Called from orchestrator.run_batch_once at the top of every batch
+    pass (a container could be rebuilt/restarted with a real fix between poll
+    cycles -- see that call site) and from tests, for the same isolation
+    reason claude_cli_llm.py's clear_persisted_sessions() exists."""
     shutil.rmtree(SCRATCH_ROOT, ignore_errors=True)

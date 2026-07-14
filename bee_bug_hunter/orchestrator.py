@@ -17,6 +17,7 @@ from bee_bug_hunter.logging_config import get_logger, log, new_run_context
 from bee_bug_hunter.manager import build_supervisor
 from bee_bug_hunter.reports import save_report
 from bee_bug_hunter.tools.mysql_tool import clear_explain_cache
+from bee_bug_hunter.tools.read_source_tool import clear_scratch_cache
 
 _SUMMARY_LINE_PATTERN = re.compile(r"^SUMMARY:\s*(.+)$", re.MULTILINE)
 
@@ -169,6 +170,12 @@ def run_batch_once(manifest: dict) -> list[dict]:
     # one. Module-level cache (see mysql_tool.py) shared across every flow and
     # every MySQLQueryTool instance automatically -- this just resets it.
     clear_explain_cache()
+    # Same reasoning again: read_source_tool.py's docker-cp'd scratch copy
+    # otherwise survives forever (across every poll cycle, not just this batch
+    # pass) with no other invalidation path -- if a container gets rebuilt/
+    # restarted with a real fix between poll cycles, the Source Code Analyst
+    # would keep confirming a bug against stale cached source indefinitely.
+    clear_scratch_cache()
 
     # Fresh every batch pass, discarded at the end -- never persisted across poll
     # cycles or process restarts (see known_issues.py's module docstring for why).
