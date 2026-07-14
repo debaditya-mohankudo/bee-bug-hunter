@@ -70,6 +70,24 @@ async def _run_flow(flow_name: str) -> str:
                         predicate=lambda r: step["url_contains"] in r.url,
                         timeout=step.get("timeout_ms", 10000),
                     )
+                elif action == "expect_status":
+                    response = await page.wait_for_event(
+                        "response",
+                        predicate=lambda r: step["url_contains"] in r.url,
+                        timeout=step.get("timeout_ms", 10000),
+                    )
+                    expected = step.get("status_in", [step.get("status")])
+                    if response.status not in expected:
+                        raise AssertionError(
+                            f"expected status in {expected} for {step['url_contains']}, got {response.status}"
+                        )
+                elif action == "expect_text":
+                    await page.wait_for_selector(step["selector"], timeout=step.get("timeout_ms", 10000))
+                    actual = await page.locator(step["selector"]).inner_text()
+                    if "equals" in step and actual != step["equals"]:
+                        raise AssertionError(f"expected text {step['equals']!r}, got {actual!r}")
+                    if "contains" in step and step["contains"] not in actual:
+                        raise AssertionError(f"expected text to contain {step['contains']!r}, got {actual!r}")
                 else:
                     step_results.append({"step": step, "status": "skipped_unknown_action"})
                     continue
@@ -98,7 +116,9 @@ class PlaywrightFlowTool(Tool[RunFlowInput, ToolRunOptions, StringToolOutput]):
     name = "run_playwright_flow"
     description = (
         "Runs a named Playwright flow defined in flows/<flow_name>.yaml against a browser. "
-        "Each step is one of: goto, click, fill, wait_for_selector, wait_for_response, expect_status. "
+        "Each step is one of: goto, click, fill, wait_for_selector, wait_for_response, "
+        "expect_status (asserts a matching response's status is `status` or in `status_in`), "
+        "expect_text (asserts a selector's text `equals` or `contains` a value). "
         "Returns a JSON summary of every HTTP request/response observed during the flow, "
         "plus any step failures."
     )
