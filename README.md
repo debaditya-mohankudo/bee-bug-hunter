@@ -4,15 +4,40 @@ Autonomous bug-hunting crew built on the [BeeAI framework](https://github.com/i-
 a port of `crew-bug-hunter` (CrewAI) with the same features:
 
 - An **Investigation Manager** supervisor agent delegates (via handoff tools, never running
-  domain tools itself) to five workers: API Flow Runner (Playwright / requests), Docker Log
-  Capturer, DB Query Agent, Bug Analyst, and SQL Performance Agent.
+  domain tools itself) to five workers, run in order: API Flow Runner (Playwright /
+  requests), Docker Log Capturer (structurally enforced to run only after the flow
+  runner), DB Query Agent, Bug Analyst, and SQL Performance Agent.
 - Flows are YAML files in `bee_bug_hunter/flows/`; the batch to monitor is listed in
   `bee_bug_hunter/manifest.yaml`.
+- Cross-flow known-issues sharing: confirmed findings from earlier flows in the same
+  batch pass are surfaced as notes to later flows, but the manager independently
+  re-verifies relevance rather than trusting a note at face value.
 - Switchable LLM providers via `LLM_PROVIDER` in `.env`: `ollama` (default, local, no API
   key), `openai`, or `anthropic`.
 - Structured JSONL logging with a per-run `run_id` correlation id; one markdown report per
   flow run in `reports/`.
 - A Textual TUI (`python -m bee_bug_hunter.tui`).
+
+## Architecture
+
+```mermaid
+flowchart TD
+    M["Investigation Manager<br/>(RequirementAgent, handoff-only)"]
+
+    M -->|1. handoff| FR["API Flow Runner<br/>Playwright / requests"]
+    M -->|2. handoff, after FR| LC["Docker Log Capturer<br/>docker logs --since 5m"]
+    M -->|3. handoff| DB["DB Query Agent<br/>read-only SQL"]
+    M -->|4. handoff| BA["Bug Analyst"]
+    M -->|5. handoff| SP["SQL Performance Agent<br/>EXPLAIN-backed"]
+
+    KI[("known_issues.py<br/>per-batch-pass registry")]
+    FR -.->|confirmed findings| KI
+    KI -.->|notes for later flows| M
+
+    BA --> R["reports/*.md"]
+    SP --> R
+    M --> LOG["logs/bee_bug_hunter.jsonl<br/>(run_id-correlated)"]
+```
 
 ## Setup
 
