@@ -22,21 +22,23 @@ a port of `crew-bug-hunter` (CrewAI) with the same features:
 
 ```mermaid
 flowchart TD
-    M["Investigation Manager<br/>(RequirementAgent, handoff-only)"]
+    KI[("known_issues registry<br/>notes from earlier flows this pass")]
+    M["Investigation Manager<br/>(handoff-only supervisor)"]
+    FR["API Flow Runner<br/>Playwright / requests"]
+    LC["Docker Log Capturer<br/>docker logs --since 5m<br/>(only after FR)"]
+    DB["DB Query Agent<br/>read-only SQL from logs"]
+    BA["Bug Analyst<br/>root-cause synthesis"]
+    SP["SQL Performance Agent<br/>EXPLAIN-backed fix"]
+    R["reports/*.md<br/>SUMMARY: one-liner"]
 
-    M -->|1. handoff| FR["API Flow Runner<br/>Playwright / requests"]
-    M -->|2. handoff, after FR| LC["Docker Log Capturer<br/>docker logs --since 5m"]
-    M -->|3. handoff| DB["DB Query Agent<br/>read-only SQL"]
-    M -->|4. handoff| BA["Bug Analyst"]
-    M -->|5. handoff| SP["SQL Performance Agent<br/>EXPLAIN-backed"]
-
-    KI[("known_issues.py<br/>per-batch-pass registry")]
-    FR -.->|confirmed findings| KI
-    KI -.->|notes for later flows| M
-
-    BA --> R["reports/*.md"]
+    KI -.->|notes for this flow| M
+    M -->|handoff| FR
+    FR -->|conversation so far<br/>via HandoffTool| LC
+    LC --> DB
+    DB --> BA
+    BA -.->|confirmed issue| KI
+    BA --> SP
     SP --> R
-    M --> LOG["logs/bee_bug_hunter.jsonl<br/>(run_id-correlated)"]
 ```
 
 ## Setup
