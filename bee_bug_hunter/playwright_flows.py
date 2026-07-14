@@ -41,33 +41,19 @@ async def example_login_script(page: Page, network_log: list) -> list[dict]:
     instead of a step list. Kept step-for-step identical to the YAML version
     so the two are a direct side-by-side comparison of the same flow in both
     formats."""
+    # Local import: tools/playwright_script_tool.py imports PLAYWRIGHT_FLOW_REGISTRY
+    # from this module at module scope, so importing run_step back at module
+    # scope here would be circular. See run_step's own docstring.
+    from bee_bug_hunter.tools.playwright_script_tool import run_step
+
     base_url = "http://localhost:3000"
-    step_results = []
+    step_results: list[dict] = []
 
-    async def _run_step(step: dict) -> None:
-        action = step["action"]
-        try:
-            if action == "goto":
-                await page.goto(base_url + step["path"])
-            elif action == "fill":
-                await page.fill(step["selector"], step["value"])
-            elif action == "click":
-                await page.click(step["selector"])
-            elif action == "wait_for_response":
-                await page.wait_for_event(
-                    "response", predicate=lambda r: step["url_contains"] in r.url, timeout=step["timeout_ms"],
-                )
-            elif action == "wait_for_selector":
-                await page.wait_for_selector(step["selector"], timeout=step["timeout_ms"])
-            step_results.append({"step": step, "status": "ok"})
-        except Exception as e:
-            step_results.append({"step": step, "status": "failed", "error": str(e)})
-
-    await _run_step({"action": "goto", "path": "/login"})
-    await _run_step({"action": "fill", "selector": "#email", "value": "test@example.com"})
-    await _run_step({"action": "fill", "selector": "#password", "value": "password123"})
-    await _run_step({"action": "click", "selector": "#login-submit"})
-    await _run_step({"action": "wait_for_response", "url_contains": "/api/auth/login", "timeout_ms": 10000})
-    await _run_step({"action": "wait_for_selector", "selector": "#dashboard", "timeout_ms": 10000})
+    await run_step(page, {"action": "goto", "path": "/login"}, step_results, base_url)
+    await run_step(page, {"action": "fill", "selector": "#email", "value": "test@example.com"}, step_results, base_url)
+    await run_step(page, {"action": "fill", "selector": "#password", "value": "password123"}, step_results, base_url)
+    await run_step(page, {"action": "click", "selector": "#login-submit"}, step_results, base_url)
+    await run_step(page, {"action": "wait_for_response", "url_contains": "/api/auth/login", "timeout_ms": 10000}, step_results, base_url)
+    await run_step(page, {"action": "wait_for_selector", "selector": "#dashboard", "timeout_ms": 10000}, step_results, base_url)
 
     return step_results

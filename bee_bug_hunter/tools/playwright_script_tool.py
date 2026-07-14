@@ -8,7 +8,7 @@ import logging
 
 from beeai_framework.emitter import Emitter
 from beeai_framework.tools import StringToolOutput, Tool, ToolRunOptions
-from playwright.async_api import async_playwright
+from playwright.async_api import Page, async_playwright
 from pydantic import BaseModel, Field
 
 from bee_bug_hunter.logging_config import get_logger, log
@@ -20,6 +20,56 @@ logger = get_logger(__name__)
 class RunPlaywrightScriptInput(BaseModel):
     flow_name: str = Field(..., description="Registry name of the Playwright flow function to run (see bee_bug_hunter/playwright_flows.py)")
     headless: bool = Field(True, description="Whether to launch the browser headless")
+
+
+async def run_step(page: Page, step: dict, step_results: list, base_url: str = "") -> None:
+    """Executes one YAML-DSL-shaped step dict against `page` and appends its
+    {"step", "status", ["error"]} result to `step_results` -- the same step
+    vocabulary and dispatch playwright_tool.py's YAML runner uses (goto, fill,
+    click, wait_for_response, wait_for_selector, expect_status, expect_text),
+    but callable directly from a plain-Python flow in playwright_flows.py.
+
+    Not imported at module scope by playwright_flows.py -- this module already
+    imports PLAYWRIGHT_FLOW_REGISTRY from there, so a top-level import back
+    would be circular. Import this function locally inside a flow function
+    instead."""
+    action = step["action"]
+    try:
+        if action == "goto":
+            await page.goto(base_url + step.get("path", ""))
+        elif action == "fill":
+            await page.fill(step["selector"], step.get("value", ""))
+        elif action == "click":
+            await page.click(step["selector"])
+        elif action == "wait_for_selector":
+            await page.wait_for_selector(step["selector"], timeout=step.get("timeout_ms", 10000))
+        elif action == "wait_for_response":
+            await page.wait_for_event(
+                "response",
+                predicate=lambda r: step["url_contains"] in r.url,
+                timeout=step.get("timeout_ms", 10000),
+            )
+        elif action == "expect_status":
+            response = await page.wait_for_event(
+                "response",
+                predicate=lambda r: step["url_contains"] in r.url,
+                timeout=step.get("timeout_ms", 10000),
+            )
+            expected = step.get("status_in", [step.get("status")])
+            if response.status not in expected:
+                raise AssertionError(
+                    f"expected status in {expected} for {step['url_contains']}, got {response.status}"
+                )
+        elif action == "expect_text":
+            await page.wait_for_selector(step["selector"], timeout=step.get("timeout_ms", 10000))
+            actual = await page.locator(step["selector"]).inner_text()
+            if "equals" in step and actual != step["equals"]:
+                raise AssertionError(f"expected text {step['equals']!r}, got {actual!r}")
+            if "contains" in step and step["contains"] not in actual:
+                raise AssertionError(f"expected text to contain {step['contains']!r}, got {actual!r}")
+        step_results.append({"step": step, "status": "ok"})
+    except Exception as e:
+        step_results.append({"step": step, "status": "failed", "error": str(e)})
 
 
 async def _run_script(flow_name: str, headless: bool) -> str:

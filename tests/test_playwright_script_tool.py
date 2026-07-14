@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from bee_bug_hunter.playwright_flows import PLAYWRIGHT_FLOW_REGISTRY, playwright_flow
-from bee_bug_hunter.tools.playwright_script_tool import _run_script
+from bee_bug_hunter.tools.playwright_script_tool import _run_script, run_step
 
 
 def _fake_playwright(page):
@@ -148,3 +148,92 @@ def test_playwright_flow_decorator_registers_under_given_name():
         assert PLAYWRIGHT_FLOW_REGISTRY["decorator_test_flow"] is _fn
     finally:
         PLAYWRIGHT_FLOW_REGISTRY.pop("decorator_test_flow", None)
+
+
+class TestRunStep:
+    """run_step is a standalone reusable helper (moved out of playwright_flows.py
+    per user request) -- exercised directly here, including the expect_status/
+    expect_text branches that mirror playwright_tool.py's YAML DSL but weren't
+    previously covered in this module."""
+
+    @pytest.mark.asyncio
+    async def test_expect_status_passes_when_status_matches(self):
+        page = AsyncMock()
+        page.wait_for_event.return_value = MagicMock(status=200)
+        step_results = []
+
+        await run_step(page, {"action": "expect_status", "url_contains": "/api/login", "status": 200}, step_results)
+
+        assert step_results[0]["status"] == "ok"
+
+    @pytest.mark.asyncio
+    async def test_expect_status_fails_when_status_does_not_match(self):
+        page = AsyncMock()
+        page.wait_for_event.return_value = MagicMock(status=500)
+        step_results = []
+
+        await run_step(page, {"action": "expect_status", "url_contains": "/api/login", "status": 200}, step_results)
+
+        assert step_results[0]["status"] == "failed"
+        assert "500" in step_results[0]["error"]
+
+    @pytest.mark.asyncio
+    async def test_expect_status_accepts_status_in_list(self):
+        page = AsyncMock()
+        page.wait_for_event.return_value = MagicMock(status=201)
+        step_results = []
+
+        await run_step(page, {"action": "expect_status", "url_contains": "/api/login", "status_in": [200, 201]}, step_results)
+
+        assert step_results[0]["status"] == "ok"
+
+    @pytest.mark.asyncio
+    async def test_expect_text_passes_when_text_contains(self):
+        page = AsyncMock()
+        locator = AsyncMock()
+        locator.inner_text.return_value = "Hello, test user"
+        page.locator = MagicMock(return_value=locator)
+        step_results = []
+
+        await run_step(page, {"action": "expect_text", "selector": "#welcome", "contains": "Hello"}, step_results)
+
+        assert step_results[0]["status"] == "ok"
+
+    @pytest.mark.asyncio
+    async def test_expect_text_fails_when_text_does_not_contain(self):
+        page = AsyncMock()
+        locator = AsyncMock()
+        locator.inner_text.return_value = "Goodbye"
+        page.locator = MagicMock(return_value=locator)
+        step_results = []
+
+        await run_step(page, {"action": "expect_text", "selector": "#welcome", "contains": "Hello"}, step_results)
+
+        assert step_results[0]["status"] == "failed"
+        assert "Goodbye" in step_results[0]["error"]
+
+    @pytest.mark.asyncio
+    async def test_goto_prefixes_base_url(self):
+        page = AsyncMock()
+        step_results = []
+
+        await run_step(page, {"action": "goto", "path": "/login"}, step_results, base_url="http://x")
+
+        page.goto.assert_awaited_once_with("http://x/login")
+        assert step_results[0]["status"] == "ok"
+
+    @pytest.mark.asyncio
+    async def test_unknown_action_is_recorded_ok_without_calling_page(self):
+        """Mirrors playwright_tool.py's YAML runner: an unrecognized action
+        doesn't raise, it just does nothing -- caller sees status 'ok' since
+        no exception was raised. (Unlike the YAML runner, there's no
+        'skipped_unknown_action' status here since a script author controls
+        the action strings directly; this documents current behavior.)"""
+        page = AsyncMock()
+        step_results = []
+
+        await run_step(page, {"action": "not_a_real_action"}, step_results)
+
+        assert step_results[0]["status"] == "ok"
+        page.goto.assert_not_called()
+        page.click.assert_not_called()
