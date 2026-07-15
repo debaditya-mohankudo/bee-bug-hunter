@@ -20,6 +20,7 @@ from bee_bug_hunter.tools.read_source_tool import ReadSourceFileTool
 def build_agents(
     docker_host: str | None = None, mysql_cfg: dict | None = None,
     flow_name: str = "default", containers: str = "",
+    container_stacks: dict[str, str] | None = None,
 ) -> dict:
     """docker_host/mysql_cfg are per-flow overrides from manifest.yaml (see
     that file's comments): None means "use the .env default for everything".
@@ -29,7 +30,11 @@ def build_agents(
     is unused there since it has no shared-root session to seed); every other
     provider ignores them. MySQLQueryTool's EXPLAIN cache is module-level (see
     mysql_tool.py), not threaded through here -- every instance built below
-    shares it automatically."""
+    shares it automatically. container_stacks is an optional name -> free-text
+    stack description map (manifest.yaml's root-level container_stacks:,
+    pre-filtered by the caller to this flow's containers) -- prompt context
+    only, nothing branches on it in code, so a project that never sets it
+    behaves exactly as before."""
     # A separate get_chat_model(role=...) call per worker rather than one shared llm:
     # for the CLI-shelling providers this gives each role its own session singleton
     # (see llm.py), keeping workers isolated from each other instead of bleeding
@@ -120,6 +125,10 @@ def build_agents(
         memory=LoggingMemory(agent_name="SQL Performance Agent"),
     )
 
+    stack_note = (
+        f" The container stacks in this app: {', '.join(f'{n}: {s}' for n, s in container_stacks.items())}."
+        if container_stacks else ""
+    )
     source_code_analyst = RequirementAgent(
         llm=get_chat_model(role="Source Code Analyst", flow_name=flow_name, containers=containers),
         name="Source Code Analyst",
@@ -130,6 +139,7 @@ def build_agents(
             "code with read_source_file — e.g. checking the exact column name in a SQL query, or the "
             "exact loop shape behind a suspected N+1 pattern — rather than relying only on log/DB "
             "evidence. Quote the specific line(s) that confirm or refute the hypothesis in your answer."
+            f"{stack_note}"
         ),
         tools=[ReadSourceFileTool(docker_host=docker_host)],
         memory=LoggingMemory(agent_name="Source Code Analyst"),

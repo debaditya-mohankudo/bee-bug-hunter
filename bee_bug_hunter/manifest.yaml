@@ -24,8 +24,20 @@
 #   mysql:       host/port/user/password/database overrides for DB Query Agent /
 #                SQL Performance Agent's run_mysql_query tool, for flows whose DB
 #                isn't the single one configured in .env.
+#
+# container_stacks: optional root-level map, name -> free-text stack description
+#                    (e.g. "Python 3.11, Flask, SQLAlchemy"). Prompt context only for
+#                    the Source Code Analyst -- purely descriptive, nothing branches
+#                    on it in code, so it's safe to omit entirely. Keyed by container
+#                    name (not per-flow) since the same container can back multiple
+#                    flows above; each flow only gets told about the stacks of the
+#                    containers it actually lists.
 duration_seconds: 30
 poll_interval_seconds: 300
+
+container_stacks:
+  demo-api: "Python 3.11, Flask, SQLAlchemy"
+  demo-db: "MySQL 8"
 
 flows:
   - name: example_login

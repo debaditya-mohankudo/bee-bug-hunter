@@ -43,15 +43,31 @@ def _framework_error_fields(error: FrameworkError) -> dict:
 tool_capture.install()
 
 
-def run_flow_once(flow_cfg: dict, duration_seconds: int, known_issues: list | None = None) -> dict:
+def run_flow_once(
+    flow_cfg: dict, duration_seconds: int, known_issues: list | None = None,
+    container_stacks: dict[str, str] | None = None,
+) -> dict:
     """known_issues, if given, is a per-batch-pass registry (see known_issues.py)
     shared across every flow in the same run_batch_once call -- every flow gets
     told what any earlier flow in this same pass found, and the manager decides
     for itself whether it's relevant. None means "standalone run" (e.g. a
     single-flow --manifest for testing): no known-issue note is used at all,
-    and nothing gets recorded anywhere."""
+    and nothing gets recorded anywhere. container_stacks, if given, is the full
+    manifest-root container_stacks: map (name -> stack description) -- filtered
+    here to just this flow's containers before being passed down, since the
+    same container can appear in multiple flows but a flow only cares about
+    its own."""
     flow_name = flow_cfg["name"]
-    containers = ",".join(flow_cfg["containers"])
+    flow_containers = flow_cfg["containers"]
+    containers = ",".join(flow_containers)
+    flow_container_stacks = (
+        {name: container_stacks[name] for name in flow_containers if name in container_stacks}
+        if container_stacks else None
+    )
+    if container_stacks:
+        missing = [name for name in flow_containers if name not in container_stacks]
+        if missing:
+            log(logger, logging.WARNING, "container_stack_missing", flow=flow_name, containers=missing)
     run_id = new_run_context(flow_name)
 
     log(logger, logging.INFO, "flow_run_started", containers=containers, duration_seconds=duration_seconds)
@@ -69,6 +85,7 @@ def run_flow_once(flow_cfg: dict, duration_seconds: int, known_issues: list | No
             flow_kind=flow_cfg.get("kind", DEFAULT_FLOW_KIND),
             api_flow_name=flow_cfg.get("api_flow"),
             known_issue_note=known_issue_note,
+            container_stacks=flow_container_stacks,
         )
         # asyncio.run copies the current context, so the run_id contextvar set
         # above is visible to every tool call inside the supervisor's loop.
@@ -180,11 +197,12 @@ def run_batch_once(manifest: dict) -> list[dict]:
     # Fresh every batch pass, discarded at the end -- never persisted across poll
     # cycles or process restarts (see known_issues.py's module docstring for why).
     known_issues: list = []
+    container_stacks = manifest.get("container_stacks")
 
     results = []
     for flow_cfg in manifest["flows"]:
         try:
-            results.append(run_flow_once(flow_cfg, duration_seconds, known_issues))
+            results.append(run_flow_once(flow_cfg, duration_seconds, known_issues, container_stacks))
         except FrameworkError as e:
             # one flow's failure shouldn't take down the rest of the batch;
             # the full chain is already logged in run_flow_once -- this line

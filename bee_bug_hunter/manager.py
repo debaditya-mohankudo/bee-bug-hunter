@@ -23,6 +23,7 @@ def build_supervisor(
     flow_kind: str = DEFAULT_FLOW_KIND,
     api_flow_name: str | None = None,
     known_issue_note: str | None = None,
+    container_stacks: dict[str, str] | None = None,
 ) -> tuple[RequirementAgent, str]:
     """Returns (supervisor agent, investigation prompt). flow_kind selects which
     Flow Runner tool the manager is told to have the worker use: 'ui' (default)
@@ -34,9 +35,13 @@ def build_supervisor(
     flow already found this same batch pass on a container this flow also
     touches -- prepended as context, not a shortcut: the manager still
     investigates from real evidence every time and only uses the note to judge
-    whether this run reproduces the same issue or something new."""
+    whether this run reproduces the same issue or something new. container_stacks,
+    if given, is a name -> stack description map for this flow's containers (see
+    manifest.yaml's root-level container_stacks:), passed straight through to
+    build_agents() for the Source Code Analyst's prompt."""
     workers = build_agents(
         docker_host=docker_host, mysql_cfg=mysql_cfg, flow_name=flow_name, containers=containers,
+        container_stacks=container_stacks,
     )
 
     handoffs = {
