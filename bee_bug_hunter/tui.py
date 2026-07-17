@@ -73,6 +73,8 @@ from bee_bug_hunter.config import (
 )
 from bee_bug_hunter.logging_config import configure_logging, flow_name_var, get_logger, log
 from bee_bug_hunter.orchestrator import run_flow_once
+from bee_bug_hunter.tools.mysql_tool import clear_schema_cache
+from bee_bug_hunter.tools.read_source_tool import clear_scratch_cache
 from bee_bug_hunter.tui_widgets import CustomScreen, EventFeed, bordered, step_prefix
 
 # Total steps in the Select -> Anomalies -> Results flow (HomeScreen excluded --
@@ -791,6 +793,29 @@ class BugHunterApp(App):
         self.run_worker(self._run_batch, thread=True, exclusive=True)
 
     def _run_batch(self) -> None:
+        # Mirrors orchestrator.run_batch_once's per-batch-pass reset -- this path
+        # (TUI "Run" button) calls run_flow_once per flow directly rather than
+        # going through run_batch_once, so without this it never runs at all.
+        # Missing it is exactly the crash-recovery mismatch clear_persisted_sessions'
+        # docstring warns about: a flow killed/interrupted mid-run (crashed process,
+        # or the user quitting the TUI mid-investigation) leaves a claude_cli/
+        # copilot_cli session on disk whose CLI-side history is ahead of any fresh
+        # RequirementAgentRunState -- the next run of that same flow then resumes
+        # the stale session, the manager "remembers" steps it never actually took
+        # this run, and skips delegating to them -- so tool_capture never records
+        # fresh raw JSON for the skipped steps and anomaly_detector silently sees
+        # nothing to flag even when the manager's own prose describes a real bug.
+        if os.getenv("LLM_PROVIDER") == "claude_cli":
+            from bee_bug_hunter.claude_cli_llm import clear_persisted_sessions
+
+            clear_persisted_sessions()
+        elif os.getenv("LLM_PROVIDER") == "copilot_cli":
+            from bee_bug_hunter.copilot_cli_llm import clear_persisted_sessions
+
+            clear_persisted_sessions()
+        clear_schema_cache()
+        clear_scratch_cache()
+
         duration_seconds = self.manifest.get("duration_seconds", 30)
         flows_by_name = {f["name"]: f for f in self.manifest.get("flows", [])}
         results = []
