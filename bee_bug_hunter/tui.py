@@ -386,8 +386,19 @@ class ResultsScreen(CustomScreen):
                 yield bordered(
                     Markdown(self._report_markdown(row)),
                     f"{prefix}{row['flow']}  (run {row['run_id']})",
-                ).add_class("panel")
+                ).add_class(self._panel_class(row))
         yield from self.compose_foot()
+
+    @staticmethod
+    def _panel_class(row: dict) -> str:
+        # Same precedence AnomalyScreen's table would need if it ever collapsed
+        # its two independent Bug/Perf cells into one verdict: bug over perf.
+        a = row.get("anomaly") or {}
+        if a.get("bug_signal"):
+            return "panel-bug"
+        if a.get("perf_signal"):
+            return "panel-perf"
+        return "panel-ok"
 
     @staticmethod
     def _report_markdown(row: dict) -> str:
@@ -471,6 +482,33 @@ class BugHunterApp(App):
         padding: 1 2;
     }}
     .panel:focus-within {{
+        border: round {ACCENT};
+    }}
+    /* Verdict-keyed variants of .panel for ResultsScreen -- same padding/
+       background, only the border color differs, so a panel's neutral vs.
+       flagged state reads at a glance without opening the report. */
+    .panel-bug {{
+        border: round {RED};
+        background: #11151d;
+        padding: 1 2;
+    }}
+    .panel-bug:focus-within {{
+        border: round {ACCENT};
+    }}
+    .panel-perf {{
+        border: round {AMBER};
+        background: #11151d;
+        padding: 1 2;
+    }}
+    .panel-perf:focus-within {{
+        border: round {ACCENT};
+    }}
+    .panel-ok {{
+        border: round {GREEN};
+        background: #11151d;
+        padding: 1 2;
+    }}
+    .panel-ok:focus-within {{
         border: round {ACCENT};
     }}
     DataTable {{
