@@ -11,7 +11,7 @@ from beeai_framework.errors import FrameworkError
 
 from bee_bug_hunter import delegation_capture, tool_capture
 from bee_bug_hunter.anomaly_detector import detect
-from bee_bug_hunter.config import DEFAULT_FLOW_KIND
+from bee_bug_hunter.config import DEFAULT_DOCKER_HOST_ENV_VAR, DEFAULT_FLOW_KIND
 from bee_bug_hunter.known_issues import compute_fingerprint, note_for, record_issue
 from bee_bug_hunter.logging_config import get_logger, log, new_run_context
 from bee_bug_hunter.manager import build_supervisor
@@ -77,10 +77,16 @@ def run_flow_once(
     if known_issue_note:
         log(logger, logging.INFO, "known_issue_note_applied", note=known_issue_note)
 
+    # A flow's own manifest.yaml docker_host: is a per-flow escape hatch for the
+    # rare case it must target a different host than everything else; the
+    # normal path is one global default (BEE_DEFAULT_DOCKER_HOST, set via the
+    # TUI's Config screen "Docker Host" card) that every flow picks up.
+    docker_host = flow_cfg.get("docker_host") or os.getenv(DEFAULT_DOCKER_HOST_ENV_VAR) or None
+
     try:
         supervisor, prompt = build_supervisor(
             flow_name, containers, duration_seconds,
-            docker_host=flow_cfg.get("docker_host"),
+            docker_host=docker_host,
             mysql_cfg=flow_cfg.get("mysql"),
             flow_kind=flow_cfg.get("kind", DEFAULT_FLOW_KIND),
             api_flow_name=flow_cfg.get("api_flow"),

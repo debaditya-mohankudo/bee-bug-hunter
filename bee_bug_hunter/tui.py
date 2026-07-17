@@ -2,9 +2,11 @@
 
 Five screens:
   1. HomeScreen     - what this app does and the crew's agent roster.
-  2. ConfigScreen   - the active LLM/MySQL config plus per-flow docker_host/
-                       mysql overrides from manifest.yaml (read-only; press
-                       'c' from HomeScreen).
+  2. ConfigScreen   - 3 cards (LLM Config / MySQL DB / Docker Host) to edit the
+                       active LLM provider/model, MySQL connection, and the
+                       global docker host every flow uses by default; per-flow
+                       docker_host/mysql overrides from manifest.yaml are shown
+                       read-only below (press 'c' from HomeScreen).
   3. FlowSelectScreen - pick which manifest flows to run, then run them
                         sequentially with a live EventFeed inline.
   4. AnomalyScreen  - deterministic anomaly signals (anomaly_detector.py) per
@@ -62,6 +64,7 @@ from textual.widgets.selection_list import Selection
 from bee_bug_hunter.agents import agent_summaries
 from bee_bug_hunter.config import (
     APP_DB_CONN,
+    DEFAULT_DOCKER_HOST_ENV_VAR,
     DEFAULT_LLM_PROVIDER,
     DEFAULT_LOG_FILE,
     DEFAULT_LOG_LEVEL,
@@ -225,10 +228,20 @@ class HomeScreen(CustomScreen):
 
 
 class ConfigScreen(CustomScreen):
-    """Editable view of the active LLM provider/model and MySQL connection --
-    split out of HomeScreen into its own screen (house pattern, see
-    ACME_Cert_Life_Cycle_Agent_By_Claude_Cowork's ConfigScreen: a dedicated
-    Config tab bound to 'c', F2 to save, escape to discard).
+    """Editable view of the active LLM provider/model, MySQL connection, and
+    global docker host -- split out of HomeScreen into its own screen (house
+    pattern, see ACME_Cert_Life_Cycle_Agent_By_Claude_Cowork's ConfigScreen: a
+    dedicated Config tab bound to 'c', F2 to save, escape to discard).
+
+    Laid out as 3 side-by-side cards (LLM Config / MySQL DB / Docker Host)
+    rather than one long vertical stack -- each card is a single bordered
+    container with plain (unbordered) Static-label + Input/Select pairs
+    inside it, deliberately not individually bordering each field: a row of
+    differently-sized bordered siblings staggers instead of aligning (see
+    feedback:textual-mixed-border-height-misaligns-horizontal-row) -- with
+    only the 3 outer cards bordered, that risk doesn't apply, and each card
+    is free to hold a different number of fields (LLM: 2, MySQL: 5, Docker: 1)
+    without needing matching heights.
 
     F2 (not a letter key) for save, same reason as the reference: Input/Select
     consume printable keys while focused, so a letter binding would never
@@ -238,9 +251,11 @@ class ConfigScreen(CustomScreen):
     immediately -- no relaunch needed, matching this screen's on-resume
     refresh promise from before.
 
-    Per-flow docker_host/mysql overrides come from manifest.yaml, a nested
-    per-flow structure this form doesn't attempt to edit -- shown below the
-    form as a read-only reference the same way HomeScreen used to show it."""
+    The Docker Host card sets BEE_DEFAULT_DOCKER_HOST, the one global setting
+    every flow uses unless it sets its own manifest.yaml docker_host: override
+    (see orchestrator.run_flow_once) -- per-flow overrides remain a read-only
+    reference below the cards, same as MySQL per-flow overrides, since editing
+    manifest.yaml's nested per-flow structure is out of scope for this form."""
 
     BINDINGS = [
         ("escape", "pop_screen", "Back"),
@@ -254,34 +269,49 @@ class ConfigScreen(CustomScreen):
         provider = os.getenv("LLM_PROVIDER", DEFAULT_LLM_PROVIDER)
         model_var = LLM_MODEL_ENV_VAR.get(provider, "")
         with VerticalScroll(id="config-body"):
-            yield bordered(
-                Select(
-                    [(p, p) for p in self._PROVIDERS],
-                    value=provider if provider in self._PROVIDERS else Select.BLANK,
-                    id="provider-select",
-                ),
-                "LLM Provider",
-            ).add_class("panel")
-            yield bordered(
-                Input(os.getenv(model_var, ""), placeholder="model name", id="model-input"),
-                f"Model ({model_var or 'select a provider'})",
-            ).add_class("panel-input")
-            yield bordered(
-                Input(os.getenv("MYSQL_HOST", APP_DB_CONN["host"]), id="mysql-host-input"),
-                "MySQL Host",
-            ).add_class("panel-input")
-            yield bordered(
-                Input(os.getenv("MYSQL_PORT", str(APP_DB_CONN["port"])), id="mysql-port-input"),
-                "MySQL Port",
-            ).add_class("panel-input")
-            yield bordered(
-                Input(os.getenv("MYSQL_USER", APP_DB_CONN["user"]), id="mysql-user-input"),
-                "MySQL User",
-            ).add_class("panel-input")
-            yield bordered(
-                Input(os.getenv("MYSQL_DATABASE", APP_DB_CONN["database"]), id="mysql-db-input"),
-                "MySQL Database",
-            ).add_class("panel-input")
+            with Horizontal(id="config-cards"):
+                yield bordered(
+                    Vertical(
+                        Static("Provider", classes="field-label"),
+                        Select(
+                            [(p, p) for p in self._PROVIDERS],
+                            value=provider if provider in self._PROVIDERS else Select.BLANK,
+                            id="provider-select",
+                        ),
+                        Static(f"Model ({model_var or 'select a provider'})", id="model-label", classes="field-label"),
+                        Input(os.getenv(model_var, ""), placeholder="model name", id="model-input"),
+                    ),
+                    "LLM Config",
+                ).add_class("config-card")
+                yield bordered(
+                    Vertical(
+                        Static("Host", classes="field-label"),
+                        Input(os.getenv("MYSQL_HOST", APP_DB_CONN["host"]), id="mysql-host-input"),
+                        Static("Port", classes="field-label"),
+                        Input(os.getenv("MYSQL_PORT", str(APP_DB_CONN["port"])), id="mysql-port-input"),
+                        Static("User", classes="field-label"),
+                        Input(os.getenv("MYSQL_USER", APP_DB_CONN["user"]), id="mysql-user-input"),
+                        Static("Database", classes="field-label"),
+                        Input(os.getenv("MYSQL_DATABASE", APP_DB_CONN["database"]), id="mysql-db-input"),
+                        Static("Password", classes="field-label"),
+                        Input(
+                            os.getenv("MYSQL_PASSWORD", APP_DB_CONN["password"]),
+                            password=True, id="mysql-password-input",
+                        ),
+                    ),
+                    "MySQL DB",
+                ).add_class("config-card")
+                yield bordered(
+                    Vertical(
+                        Static("Docker Host (blank = local)", classes="field-label"),
+                        Input(
+                            os.getenv(DEFAULT_DOCKER_HOST_ENV_VAR, ""),
+                            placeholder="tcp://host:2376 or ssh://user@host",
+                            id="docker-host-input",
+                        ),
+                    ),
+                    "Docker Host",
+                ).add_class("config-card")
             yield Static("Press F2 to save, Escape to discard.", id="config-hint")
             yield bordered(
                 Static(self._overrides_text(), id="config-overrides"),
@@ -299,6 +329,8 @@ class ConfigScreen(CustomScreen):
         self.query_one("#mysql-port-input", Input).value = os.getenv("MYSQL_PORT", str(APP_DB_CONN["port"]))
         self.query_one("#mysql-user-input", Input).value = os.getenv("MYSQL_USER", APP_DB_CONN["user"])
         self.query_one("#mysql-db-input", Input).value = os.getenv("MYSQL_DATABASE", APP_DB_CONN["database"])
+        self.query_one("#mysql-password-input", Input).value = os.getenv("MYSQL_PASSWORD", APP_DB_CONN["password"])
+        self.query_one("#docker-host-input", Input).value = os.getenv(DEFAULT_DOCKER_HOST_ENV_VAR, "")
         self.query_one("#config-overrides", Static).update(self._overrides_text())
 
     def on_select_changed(self, event: Select.Changed) -> None:
@@ -307,7 +339,7 @@ class ConfigScreen(CustomScreen):
         model_var = LLM_MODEL_ENV_VAR.get(str(event.value), "")
         model_input = self.query_one("#model-input", Input)
         model_input.value = os.getenv(model_var, "")
-        model_input.border_title = f"Model ({model_var or 'select a provider'})"
+        self.query_one("#model-label", Static).update(f"Model ({model_var or 'select a provider'})")
 
     def action_pop_screen(self) -> None:
         log_ui("ui_key_pressed", screen="ConfigScreen", key="escape")
@@ -334,6 +366,8 @@ class ConfigScreen(CustomScreen):
             "MYSQL_PORT": port,
             "MYSQL_USER": self.query_one("#mysql-user-input", Input).value.strip(),
             "MYSQL_DATABASE": self.query_one("#mysql-db-input", Input).value.strip(),
+            "MYSQL_PASSWORD": self.query_one("#mysql-password-input", Input).value.strip(),
+            DEFAULT_DOCKER_HOST_ENV_VAR: self.query_one("#docker-host-input", Input).value.strip(),
         }
         if model_var:
             updates[model_var] = self.query_one("#model-input", Input).value.strip()
@@ -594,19 +628,35 @@ class BugHunterApp(App):
     .panel:focus-within {{
         border: round {ACCENT};
     }}
-    /* Input's own content is a single row -- .panel's `padding: 1 2` (top+
-       bottom 1 each) squashes it to zero height inside a border, same class
-       of bug as feedback:b620263a (fixed-height content + padding on all
-       sides). Horizontal-only padding here leaves the content row intact. */
-    .panel-input {{
+    /* ConfigScreen's 3 cards -- only the outer card is bordered, fields
+       inside are plain Static-label + Input/Select pairs with no border of
+       their own, so cards of different field counts (LLM: 2, MySQL: 5,
+       Docker: 1) don't need matching heights and can't hit the mixed-
+       border-height row-staggering pitfall (feedback:
+       textual-mixed-border-height-misaligns-horizontal-row) or the fixed-
+       height-plus-padding squash (feedback:b620263a) -- height: auto
+       throughout lets each card and its Vertical size to its own content. */
+    #config-cards {{
+        height: auto;
+    }}
+    .config-card {{
         border: round #2a3040;
         background: #11151d;
-        padding: 0 2;
-        height: 3;
-        margin-bottom: 1;
+        padding: 1 2;
+        margin-right: 2;
+        width: 1fr;
+        height: auto;
     }}
-    .panel-input:focus-within {{
+    .config-card:focus-within {{
         border: round {ACCENT};
+    }}
+    .config-card Vertical {{
+        height: auto;
+    }}
+    .field-label {{
+        color: {MUTED};
+        height: 1;
+        margin-top: 1;
     }}
     /* Verdict-keyed variants of .panel for ResultsScreen -- same padding/
        background, only the border color differs, so a panel's neutral vs.

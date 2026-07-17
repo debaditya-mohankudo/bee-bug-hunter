@@ -69,3 +69,11 @@ APP_DB_CONN = {
 APP_DOCKER_CONN = {
     "host": "local",
 }
+
+# .env key for a global fallback docker host (blank = local daemon), used by
+# orchestrator.run_flow_once when a flow doesn't set its own manifest.yaml
+# docker_host: override -- read by tui.py's ConfigScreen "Docker Host" card.
+# Deliberately not named DOCKER_HOST: that name is passed straight through to
+# the docker CLI subprocess by tools/docker_log_tool.py, so reusing it here
+# would collide with the ambient shell's own DOCKER_HOST if one is set.
+DEFAULT_DOCKER_HOST_ENV_VAR = "BEE_DEFAULT_DOCKER_HOST"
