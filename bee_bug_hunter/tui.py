@@ -67,7 +67,7 @@ from bee_bug_hunter.config import (
     DEFAULT_MANIFEST,
     LLM_MODEL_ENV_VAR,
 )
-from bee_bug_hunter.logging_config import configure_logging, get_logger, log
+from bee_bug_hunter.logging_config import configure_logging, flow_name_var, get_logger, log
 from bee_bug_hunter.orchestrator import run_flow_once
 from bee_bug_hunter.tui_widgets import CustomScreen, EventFeed, bordered
 
@@ -134,6 +134,14 @@ class FeedLogHandler(logging.Handler):
         message = record.getMessage()
         if message in self._SKIP_MESSAGES:
             return
+        if message == "flow_run_started":
+            # flow_name_var is set by new_run_context() inside run_flow_once,
+            # in the same worker thread this handler runs in -- reading it
+            # here surfaces which flow is in flight without threading the
+            # name through the log record itself.
+            flow_name = flow_name_var.get()
+            self.feed.border_title = f"Live Run — running: {flow_name}"
+            self.feed.app.sub_title = f"Running: {flow_name}"
         kind = self._KIND_BY_MESSAGE.get(message, "context_log")
         extra = getattr(record, "extra_fields", None) or {}
         detail = " ".join(f"{k}={v}" for k, v in extra.items())
@@ -573,6 +581,7 @@ class BugHunterApp(App):
         log_ui("ui_batch_run_finished", result_count=len(self.last_results))
         if isinstance(self.screen, FlowSelectScreen):
             self.screen.query_one("#event-feed", EventFeed).border_title = "Live Run — done"
+        self.sub_title = "Done"
         self.push_screen(AnomalyScreen())
 
 
