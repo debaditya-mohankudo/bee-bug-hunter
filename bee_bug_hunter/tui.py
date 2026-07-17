@@ -1,16 +1,17 @@
 """Textual TUI entry point for bee_bug_hunter.
 
-Four screens:
-  1. HomeScreen     - what this app does, the crew's agent roster, and the
-                       active LLM/MySQL config plus per-flow docker_host/mysql
-                       overrides from manifest.yaml.
-  2. FlowSelectScreen - pick which manifest flows to run, then run them
+Five screens:
+  1. HomeScreen     - what this app does and the crew's agent roster.
+  2. ConfigScreen   - the active LLM/MySQL config plus per-flow docker_host/
+                       mysql overrides from manifest.yaml (read-only; press
+                       'c' from HomeScreen).
+  3. FlowSelectScreen - pick which manifest flows to run, then run them
                         sequentially with a live EventFeed inline.
-  3. AnomalyScreen  - deterministic anomaly signals (anomaly_detector.py) per
+  4. AnomalyScreen  - deterministic anomaly signals (anomaly_detector.py) per
                        flow, computed from the real Flow Runner / Log Capturer
                        output regardless of whether the manager called its
                        optional check_anomalies tool.
-  4. ResultsScreen  - per-flow Bug Analyst / SQL Performance Agent reports
+  5. ResultsScreen  - per-flow Bug Analyst / SQL Performance Agent reports
                        (falling back to the manager's own summary when neither
                        specialist was escalated to).
 
@@ -174,7 +175,7 @@ class HomeScreen(CustomScreen):
                     "pure JSON API flows via Python/requests (api_flows.py) -- capturing docker "
                     "logs, inspecting DB queries, and producing a root-cause bug/perf report.\n\n"
                     f"Manifest: {DEFAULT_MANIFEST}\n\n"
-                    "Press 'r' for UI flows, 'a' for API flows, or click below.",
+                    "Press 'r' for UI flows, 'a' for API flows, 'c' for config, or click below.",
                     id="intro",
                 ),
                 "About",
@@ -185,13 +186,7 @@ class HomeScreen(CustomScreen):
                 id="home-flow-buttons",
             )
             yield bordered(Static(self._agents_text(), id="agents-list"), "Agents").add_class("panel")
-            yield bordered(Static(self._config_text(), id="config-details"), "Agent Config").add_class("panel")
         yield from self.compose_foot()
-
-    def on_screen_resume(self) -> None:
-        # Refresh in case .env/manifest.yaml were hand-edited externally
-        # while this screen was in the background.
-        self.query_one("#config-details", Static).update(self._config_text())
 
     @staticmethod
     def _agents_text() -> str:
@@ -199,6 +194,51 @@ class HomeScreen(CustomScreen):
         # wiring -- just bolds the role name, matching how EventFeed already
         # uses inline markup for its icon/color prefixes.
         return "\n".join(f"• [bold]{a['role']}[/bold]: {a['goal']}" for a in agent_summaries())
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        log_ui("ui_button_pressed", screen="HomeScreen", button_id=event.button.id)
+        if event.button.id == "select-ui-flows":
+            self.app.start_flow_select("ui")
+        elif event.button.id == "select-api-flows":
+            self.app.start_flow_select("api")
+
+    def key_r(self) -> None:
+        log_ui("ui_key_pressed", screen="HomeScreen", key="r")
+        self.app.start_flow_select("ui")
+
+    def key_a(self) -> None:
+        log_ui("ui_key_pressed", screen="HomeScreen", key="a")
+        self.app.start_flow_select("api")
+
+    def key_c(self) -> None:
+        log_ui("ui_key_pressed", screen="HomeScreen", key="c")
+        self.app.push_screen(ConfigScreen())
+
+
+class ConfigScreen(CustomScreen):
+    """Read-only view of the active LLM/MySQL config plus per-flow
+    docker_host/mysql overrides from manifest.yaml -- split out of HomeScreen
+    into its own screen (house pattern: a dedicated Config tab bound to 'c'),
+    so the home screen stays a short landing page.
+
+    No in-app editor -- see _config_text()'s docstring for why; this screen
+    is refreshed on every resume in case .env/manifest.yaml were hand-edited
+    externally while it was in the background."""
+
+    BINDINGS = [("escape", "pop_screen", "Back")]
+
+    def compose(self) -> ComposeResult:
+        yield from self.compose_head()
+        with VerticalScroll(id="config-body"):
+            yield bordered(Static(self._config_text(), id="config-details"), "Agent Config").add_class("panel")
+        yield from self.compose_foot()
+
+    def on_screen_resume(self) -> None:
+        self.query_one("#config-details", Static).update(self._config_text())
+
+    def action_pop_screen(self) -> None:
+        log_ui("ui_key_pressed", screen="ConfigScreen", key="escape")
+        self.app.pop_screen()
 
     def _config_text(self) -> str:
         """Read-only: surfaces the values that actually decide which LLM and
@@ -235,21 +275,6 @@ class HomeScreen(CustomScreen):
             lines.append(f"  • {flow_cfg['name']}: {'; '.join(override_bits)}")
         lines.append("  threaded via orchestrator.run_flow_once -> manager.build_supervisor -> agents.build_agents")
         return "\n".join(lines)
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        log_ui("ui_button_pressed", screen="HomeScreen", button_id=event.button.id)
-        if event.button.id == "select-ui-flows":
-            self.app.start_flow_select("ui")
-        elif event.button.id == "select-api-flows":
-            self.app.start_flow_select("api")
-
-    def key_r(self) -> None:
-        log_ui("ui_key_pressed", screen="HomeScreen", key="r")
-        self.app.start_flow_select("ui")
-
-    def key_a(self) -> None:
-        log_ui("ui_key_pressed", screen="HomeScreen", key="a")
-        self.app.start_flow_select("api")
 
 
 class FlowSelectScreen(CustomScreen):
@@ -564,6 +589,7 @@ class BugHunterApp(App):
     #home-flow-buttons Button {{ margin-right: 2; }}
     #agents-list {{ padding: 1; }}
     #config-details {{ padding: 1; }}
+    #config-body {{ padding: 1 2; }}
     #flow-select-body {{ padding: 1 2; }}
     #anomaly-hint {{ padding: 0 2; color: {MUTED}; }}
     #results-body {{ padding: 1 2; }}
