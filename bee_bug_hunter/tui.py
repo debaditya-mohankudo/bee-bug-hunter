@@ -69,7 +69,12 @@ from bee_bug_hunter.config import (
 )
 from bee_bug_hunter.logging_config import configure_logging, flow_name_var, get_logger, log
 from bee_bug_hunter.orchestrator import run_flow_once
-from bee_bug_hunter.tui_widgets import CustomScreen, EventFeed, bordered
+from bee_bug_hunter.tui_widgets import CustomScreen, EventFeed, bordered, step_prefix
+
+# Total steps in the Select -> Anomalies -> Results flow (HomeScreen excluded --
+# it's a hub, not a stage). Kept as one constant so all three screens' counters
+# stay in sync if a fourth screen is ever added to this flow.
+TOTAL_STEPS = 3
 
 # Shared palette -- keep in sync with the .panel / component-class rules in
 # BugHunterApp.CSS below. Defined once here so screen code (e.g. the
@@ -267,11 +272,12 @@ class FlowSelectScreen(CustomScreen):
 
     def compose(self) -> ComposeResult:
         title = "Select UI Flows to Run" if self.kind == "ui" else "Select API Flows to Run"
+        prefix = step_prefix(0, TOTAL_STEPS)
         yield from self.compose_head(step_index=0)
         yield Vertical(
-            bordered(SelectionList(id="flow-picker"), title).add_class("panel"),
+            bordered(SelectionList(id="flow-picker"), f"{prefix}{title}").add_class("panel"),
             Button("Run Selected", id="run-selected", variant="primary"),
-            bordered(EventFeed(id="event-feed"), "Live Run").add_class("panel"),
+            bordered(EventFeed(id="event-feed"), f"{prefix}Live Run").add_class("panel"),
             id="flow-select-body",
         )
         yield from self.compose_foot()
@@ -326,7 +332,7 @@ class AnomalyScreen(CustomScreen):
 
     def compose(self) -> ComposeResult:
         yield from self.compose_head(step_index=1)
-        yield bordered(DataTable(id="anomaly-table"), "Anomaly Signals").add_class("panel")
+        yield bordered(DataTable(id="anomaly-table"), f"{step_prefix(1, TOTAL_STEPS)}Anomaly Signals").add_class("panel")
         yield Static(
             "Signals are computed from the API Flow Runner / Docker Log Capturer's own "
             "reported output (anomaly_detector.py), independent of the manager's report. "
@@ -375,10 +381,11 @@ class ResultsScreen(CustomScreen):
         with VerticalScroll(id="results-body"):
             if not self.app.last_results:
                 yield Static("No results yet.")
+            prefix = step_prefix(2, TOTAL_STEPS)
             for row in self.app.last_results:
                 yield bordered(
                     Markdown(self._report_markdown(row)),
-                    f"{row['flow']}  (run {row['run_id']})",
+                    f"{prefix}{row['flow']}  (run {row['run_id']})",
                 ).add_class("panel")
         yield from self.compose_foot()
 
