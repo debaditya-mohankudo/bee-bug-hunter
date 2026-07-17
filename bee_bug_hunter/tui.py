@@ -376,7 +376,9 @@ class ConfigScreen(CustomScreen):
             set_key(".env", key, value)
             os.environ[key] = value
 
-        log_ui("ui_config_saved", screen="ConfigScreen", keys=list(updates.keys()))
+        # provider is safe to log as a value (not a secret); the rest of updates
+        # (hosts, ports, credentials) stays key-names-only for the audit trail.
+        log_ui("ui_config_saved", screen="ConfigScreen", keys=list(updates.keys()), provider=str(provider))
         self.notify("Config saved to .env", severity="information")
 
     def _overrides_text(self) -> str:
@@ -759,8 +761,16 @@ class BugHunterApp(App):
         self._selected_flow_names: list[str] = []
 
     def on_mount(self) -> None:
+        # Session-boundary marker: without this, the JSONL trail has no single
+        # line marking "a TUI session started here" -- an auditor grepping the
+        # log for a given sitting has to infer the start from the first
+        # ui_screen_shown line instead of it being explicit.
+        log_ui("ui_app_started", llm_provider=os.getenv("LLM_PROVIDER", DEFAULT_LLM_PROVIDER))
         log_ui("ui_screen_shown", screen="HomeScreen")
         self.push_screen(HomeScreen())
+
+    def on_unmount(self) -> None:
+        log_ui("ui_app_stopped")
 
     def start_flow_select(self, kind: str = "ui") -> None:
         log_ui("ui_navigate", to="FlowSelectScreen", kind=kind)
@@ -791,12 +801,18 @@ class BugHunterApp(App):
                     continue
                 try:
                     results.append(run_flow_once(flow_cfg, duration_seconds))
-                except Exception:
+                except Exception as e:
                     # one flow's failure shouldn't take down the rest of the
                     # selected batch; run_flow_once already logs the root cause,
                     # but log here too so the TUI's own event trail shows which
-                    # selected flow got skipped and why, not just that a flow failed.
-                    log_ui("ui_flow_run_skipped", flow=name)
+                    # selected flow got skipped and why (error_type/error_message),
+                    # not just that a flow failed -- an auditor reading the TUI's
+                    # own JSONL stream shouldn't have to cross-reference the
+                    # orchestrator's log line by timestamp proximity to learn why.
+                    log_ui(
+                        "ui_flow_run_skipped", flow=name,
+                        error_type=type(e).__name__, error_message=str(e),
+                    )
                     ui_logger.exception("flow run raised in TUI batch worker")
                     continue
         finally:

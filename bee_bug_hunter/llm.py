@@ -34,7 +34,7 @@ def get_chat_model(role: str | None = None, flow_name: str = "default", containe
     singleton (e.g. flow_name="example_login_api", role="Bug Analyst") -- see
     ClaudeCLIChatModel.for_role(). Ignored by every other provider, which just
     construct fresh each call as before."""
-    provider = os.getenv("LLM_PROVIDER", DEFAULT_LLM_PROVIDER).lower()
+    provider = (os.getenv("LLM_PROVIDER") or DEFAULT_LLM_PROVIDER).lower()
 
     if provider == "claude_cli":
         # Belt-and-suspenders: ClaudeCLIChatModel's own _create() only ever parses one
@@ -42,7 +42,7 @@ def get_chat_model(role: str | None = None, flow_name: str = "default", containe
         # emitting >1 tool call per turn regardless of this flag -- set for consistency
         # with the other providers, not because this backend actually needs it.
         return ClaudeCLIChatModel.for_role(
-            role, model=os.getenv("CLAUDE_CLI_MODEL", DEFAULT_CLAUDE_CLI_MODEL),
+            role, model=os.getenv("CLAUDE_CLI_MODEL") or DEFAULT_CLAUDE_CLI_MODEL,
             flow_name=flow_name, containers=containers, **_SEQUENTIAL_TOOL_CALLS,
         )
     if provider == "copilot_cli":
@@ -50,26 +50,26 @@ def get_chat_model(role: str | None = None, flow_name: str = "default", containe
         # parses one {"tool": ...} JSON object per CLI call, so it's structurally
         # incapable of emitting >1 tool call per turn regardless of this flag.
         return CopilotCLIChatModel.for_role(
-            role, model=os.getenv("COPILOT_CLI_MODEL", DEFAULT_COPILOT_CLI_MODEL),
+            role, model=os.getenv("COPILOT_CLI_MODEL") or DEFAULT_COPILOT_CLI_MODEL,
             flow_name=flow_name, **_SEQUENTIAL_TOOL_CALLS,
         )
     if provider == "ollama":
         from beeai_framework.adapters.ollama.backend.chat import OllamaChatModel
 
         return OllamaChatModel(
-            os.getenv("OLLAMA_MODEL", DEFAULT_OLLAMA_MODEL),
-            base_url=os.getenv("OLLAMA_BASE_URL", DEFAULT_OLLAMA_BASE_URL),
+            os.getenv("OLLAMA_MODEL") or DEFAULT_OLLAMA_MODEL,
+            base_url=os.getenv("OLLAMA_BASE_URL") or DEFAULT_OLLAMA_BASE_URL,
             # Ollama-only context window size; other providers ignore/never see this.
-            settings={"num_ctx": int(os.getenv("OLLAMA_NUM_CTX", DEFAULT_OLLAMA_NUM_CTX))},
+            settings={"num_ctx": int(os.getenv("OLLAMA_NUM_CTX") or DEFAULT_OLLAMA_NUM_CTX)},
             **_SEQUENTIAL_TOOL_CALLS,
         )
     if provider == "openai":
         return ChatModel.from_name(
-            f"openai:{os.getenv('OPENAI_MODEL', DEFAULT_OPENAI_MODEL)}", **_SEQUENTIAL_TOOL_CALLS,
+            f"openai:{os.getenv('OPENAI_MODEL') or DEFAULT_OPENAI_MODEL}", **_SEQUENTIAL_TOOL_CALLS,
         )
     if provider == "anthropic":
         return ChatModel.from_name(
-            f"anthropic:{os.getenv('ANTHROPIC_MODEL', DEFAULT_ANTHROPIC_MODEL)}", **_SEQUENTIAL_TOOL_CALLS,
+            f"anthropic:{os.getenv('ANTHROPIC_MODEL') or DEFAULT_ANTHROPIC_MODEL}", **_SEQUENTIAL_TOOL_CALLS,
         )
 
     raise ValueError(f"Unknown LLM_PROVIDER: {provider}")
