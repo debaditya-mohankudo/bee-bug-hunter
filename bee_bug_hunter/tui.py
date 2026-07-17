@@ -161,6 +161,15 @@ class HomeScreen(CustomScreen):
     Not part of the Select -> Anomalies -> Results flow, so compose_head() is
     called with no step_index -- a plain Header, no BreadcrumbBar."""
 
+    # Explicit BINDINGS (not key_r/key_a/key_c handlers) so the Footer widget
+    # actually lists these -- Footer only renders from BINDINGS, it has no
+    # visibility into dynamically-dispatched key_<char> methods.
+    BINDINGS = [
+        ("r", "run_ui_flows", "UI Flows"),
+        ("a", "run_api_flows", "API Flows"),
+        ("c", "show_config", "Config"),
+    ]
+
     def compose(self) -> ComposeResult:
         yield from self.compose_head()
         # VerticalScroll (not a plain Vertical) + the two action buttons placed
@@ -202,15 +211,15 @@ class HomeScreen(CustomScreen):
         elif event.button.id == "select-api-flows":
             self.app.start_flow_select("api")
 
-    def key_r(self) -> None:
+    def action_run_ui_flows(self) -> None:
         log_ui("ui_key_pressed", screen="HomeScreen", key="r")
         self.app.start_flow_select("ui")
 
-    def key_a(self) -> None:
+    def action_run_api_flows(self) -> None:
         log_ui("ui_key_pressed", screen="HomeScreen", key="a")
         self.app.start_flow_select("api")
 
-    def key_c(self) -> None:
+    def action_show_config(self) -> None:
         log_ui("ui_key_pressed", screen="HomeScreen", key="c")
         self.app.push_screen(ConfigScreen())
 
