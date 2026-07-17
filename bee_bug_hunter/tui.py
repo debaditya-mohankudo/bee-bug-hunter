@@ -52,11 +52,11 @@ import os
 os.environ.setdefault("BEEAI_LOG_LEVEL", "WARNING")
 
 import yaml
-from dotenv import load_dotenv
+from dotenv import load_dotenv, set_key
 from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll
-from textual.widgets import Button, DataTable, Markdown, SelectionList, Static
+from textual.widgets import Button, DataTable, Input, Markdown, Select, SelectionList, Static
 from textual.widgets.selection_list import Selection
 
 from bee_bug_hunter.agents import agent_summaries
@@ -225,64 +225,140 @@ class HomeScreen(CustomScreen):
 
 
 class ConfigScreen(CustomScreen):
-    """Read-only view of the active LLM/MySQL config plus per-flow
-    docker_host/mysql overrides from manifest.yaml -- split out of HomeScreen
-    into its own screen (house pattern: a dedicated Config tab bound to 'c'),
-    so the home screen stays a short landing page.
+    """Editable view of the active LLM provider/model and MySQL connection --
+    split out of HomeScreen into its own screen (house pattern, see
+    ACME_Cert_Life_Cycle_Agent_By_Claude_Cowork's ConfigScreen: a dedicated
+    Config tab bound to 'c', F2 to save, escape to discard).
 
-    No in-app editor -- see _config_text()'s docstring for why; this screen
-    is refreshed on every resume in case .env/manifest.yaml were hand-edited
-    externally while it was in the background."""
+    F2 (not a letter key) for save, same reason as the reference: Input/Select
+    consume printable keys while focused, so a letter binding would never
+    fire. Saving writes straight to .env via python-dotenv's set_key (creating
+    the file from .env.example's keys if it doesn't exist yet) and also
+    updates os.environ so the *running* process picks up the change
+    immediately -- no relaunch needed, matching this screen's on-resume
+    refresh promise from before.
 
-    BINDINGS = [("escape", "pop_screen", "Back")]
+    Per-flow docker_host/mysql overrides come from manifest.yaml, a nested
+    per-flow structure this form doesn't attempt to edit -- shown below the
+    form as a read-only reference the same way HomeScreen used to show it."""
+
+    BINDINGS = [
+        ("escape", "pop_screen", "Back"),
+        ("f2", "save", "Save"),
+    ]
+
+    _PROVIDERS = ["ollama", "openai", "anthropic", "claude_cli", "copilot_cli"]
 
     def compose(self) -> ComposeResult:
         yield from self.compose_head()
+        provider = os.getenv("LLM_PROVIDER", DEFAULT_LLM_PROVIDER)
+        model_var = LLM_MODEL_ENV_VAR.get(provider, "")
         with VerticalScroll(id="config-body"):
-            yield bordered(Static(self._config_text(), id="config-details"), "Agent Config").add_class("panel")
+            yield bordered(
+                Select(
+                    [(p, p) for p in self._PROVIDERS],
+                    value=provider if provider in self._PROVIDERS else Select.BLANK,
+                    id="provider-select",
+                ),
+                "LLM Provider",
+            ).add_class("panel")
+            yield bordered(
+                Input(os.getenv(model_var, ""), placeholder="model name", id="model-input"),
+                f"Model ({model_var or 'select a provider'})",
+            ).add_class("panel-input")
+            yield bordered(
+                Input(os.getenv("MYSQL_HOST", APP_DB_CONN["host"]), id="mysql-host-input"),
+                "MySQL Host",
+            ).add_class("panel-input")
+            yield bordered(
+                Input(os.getenv("MYSQL_PORT", str(APP_DB_CONN["port"])), id="mysql-port-input"),
+                "MySQL Port",
+            ).add_class("panel-input")
+            yield bordered(
+                Input(os.getenv("MYSQL_USER", APP_DB_CONN["user"]), id="mysql-user-input"),
+                "MySQL User",
+            ).add_class("panel-input")
+            yield bordered(
+                Input(os.getenv("MYSQL_DATABASE", APP_DB_CONN["database"]), id="mysql-db-input"),
+                "MySQL Database",
+            ).add_class("panel-input")
+            yield Static("Press F2 to save, Escape to discard.", id="config-hint")
+            yield bordered(
+                Static(self._overrides_text(), id="config-overrides"),
+                "Per-flow overrides (manifest.yaml, read-only)",
+            ).add_class("panel")
         yield from self.compose_foot()
 
     def on_screen_resume(self) -> None:
-        self.query_one("#config-details", Static).update(self._config_text())
+        # Refresh in case .env/manifest.yaml were hand-edited externally
+        # while this screen was in the background.
+        provider = os.getenv("LLM_PROVIDER", DEFAULT_LLM_PROVIDER)
+        self.query_one("#provider-select", Select).value = provider if provider in self._PROVIDERS else Select.BLANK
+        self.query_one("#model-input", Input).value = os.getenv(LLM_MODEL_ENV_VAR.get(provider, ""), "")
+        self.query_one("#mysql-host-input", Input).value = os.getenv("MYSQL_HOST", APP_DB_CONN["host"])
+        self.query_one("#mysql-port-input", Input).value = os.getenv("MYSQL_PORT", str(APP_DB_CONN["port"]))
+        self.query_one("#mysql-user-input", Input).value = os.getenv("MYSQL_USER", APP_DB_CONN["user"])
+        self.query_one("#mysql-db-input", Input).value = os.getenv("MYSQL_DATABASE", APP_DB_CONN["database"])
+        self.query_one("#config-overrides", Static).update(self._overrides_text())
+
+    def on_select_changed(self, event: Select.Changed) -> None:
+        if event.select.id != "provider-select" or event.value == Select.BLANK:
+            return
+        model_var = LLM_MODEL_ENV_VAR.get(str(event.value), "")
+        model_input = self.query_one("#model-input", Input)
+        model_input.value = os.getenv(model_var, "")
+        model_input.border_title = f"Model ({model_var or 'select a provider'})"
 
     def action_pop_screen(self) -> None:
         log_ui("ui_key_pressed", screen="ConfigScreen", key="escape")
         self.app.pop_screen()
 
-    def _config_text(self) -> str:
-        """Read-only: surfaces the values that actually decide which LLM and
-        which Docker/MySQL targets the agents will hit, plus exactly where to
-        edit each one, so this is visible before a run starts instead of only
-        discoverable by reading files. There's no in-app editor -- edit the
-        named file/var directly and relaunch (or, for env vars, the running
-        process's os.environ) to pick up the change."""
-        provider = os.getenv("LLM_PROVIDER", DEFAULT_LLM_PROVIDER)
-        model = os.getenv(LLM_MODEL_ENV_VAR.get(provider, ""), "")
+    def action_save(self) -> None:
+        """Validate then persist to .env via python-dotenv's set_key, and
+        update os.environ so the change is live for this process without a
+        relaunch (matches _config_text()'s old promise -- just now editable
+        instead of read-only)."""
+        provider = self.query_one("#provider-select", Select).value
+        if provider == Select.BLANK:
+            self.notify("Pick an LLM provider before saving.", severity="warning")
+            return
+        port = self.query_one("#mysql-port-input", Input).value.strip()
+        if port and not port.isdigit():
+            self.notify("MySQL port must be numeric.", severity="warning")
+            return
 
-        lines = [
-            f"LLM provider: {provider} ({model})" if model else f"LLM provider: {provider}",
-            "  edit: LLM_PROVIDER/*_MODEL in .env overrides bee_bug_hunter/config.py's "
-            "DEFAULT_LLM_PROVIDER/DEFAULT_*_MODEL (read by llm.py:get_llm())",
-            f"MySQL default: {os.getenv('MYSQL_USER', APP_DB_CONN['user'])}@{os.getenv('MYSQL_HOST', APP_DB_CONN['host'])}:"
-            f"{os.getenv('MYSQL_PORT', str(APP_DB_CONN['port']))}/{os.getenv('MYSQL_DATABASE', APP_DB_CONN['database'])}",
-            "  edit: MYSQL_* in .env overrides bee_bug_hunter/config.py's APP_DB_CONN "
-            "(read by tools/mysql_tool.py:MySQLQueryTool._run())",
-            "",
-            "Per-flow overrides -- edit bee_bug_hunter/manifest.yaml's docker_host/mysql: keys:",
-        ]
+        model_var = LLM_MODEL_ENV_VAR.get(str(provider), "")
+        updates = {
+            "LLM_PROVIDER": str(provider),
+            "MYSQL_HOST": self.query_one("#mysql-host-input", Input).value.strip(),
+            "MYSQL_PORT": port,
+            "MYSQL_USER": self.query_one("#mysql-user-input", Input).value.strip(),
+            "MYSQL_DATABASE": self.query_one("#mysql-db-input", Input).value.strip(),
+        }
+        if model_var:
+            updates[model_var] = self.query_one("#model-input", Input).value.strip()
+
+        for key, value in updates.items():
+            set_key(".env", key, value)
+            os.environ[key] = value
+
+        log_ui("ui_config_saved", screen="ConfigScreen", keys=list(updates.keys()))
+        self.notify("Config saved to .env", severity="information")
+
+    def _overrides_text(self) -> str:
+        lines = []
         for flow_cfg in self.app.manifest.get("flows", []):
             docker_host = flow_cfg.get("docker_host")
             mysql_cfg = flow_cfg.get("mysql") or {}
             if not docker_host and not mysql_cfg:
-                lines.append(f"  • {flow_cfg['name']}: (none — uses defaults above)")
+                lines.append(f"• {flow_cfg['name']}: (none — uses defaults above)")
                 continue
             override_bits = []
             if docker_host:
                 override_bits.append(f"docker_host={docker_host}")
             if mysql_cfg:
                 override_bits.append("mysql=" + ",".join(f"{k}={v}" for k, v in mysql_cfg.items() if k != "password"))
-            lines.append(f"  • {flow_cfg['name']}: {'; '.join(override_bits)}")
-        lines.append("  threaded via orchestrator.run_flow_once -> manager.build_supervisor -> agents.build_agents")
+            lines.append(f"• {flow_cfg['name']}: {'; '.join(override_bits)}")
         return "\n".join(lines)
 
 
@@ -518,6 +594,20 @@ class BugHunterApp(App):
     .panel:focus-within {{
         border: round {ACCENT};
     }}
+    /* Input's own content is a single row -- .panel's `padding: 1 2` (top+
+       bottom 1 each) squashes it to zero height inside a border, same class
+       of bug as feedback:b620263a (fixed-height content + padding on all
+       sides). Horizontal-only padding here leaves the content row intact. */
+    .panel-input {{
+        border: round #2a3040;
+        background: #11151d;
+        padding: 0 2;
+        height: 3;
+        margin-bottom: 1;
+    }}
+    .panel-input:focus-within {{
+        border: round {ACCENT};
+    }}
     /* Verdict-keyed variants of .panel for ResultsScreen -- same padding/
        background, only the border color differs, so a panel's neutral vs.
        flagged state reads at a glance without opening the report. */
@@ -599,6 +689,10 @@ class BugHunterApp(App):
     #agents-list {{ padding: 1; }}
     #config-details {{ padding: 1; }}
     #config-body {{ padding: 1 2; }}
+    #config-hint {{ color: {MUTED}; padding: 0 2 1 2; }}
+    #config-overrides {{ padding: 1; }}
+    Select {{ background: #11151d; }}
+    Input {{ background: #11151d; }}
     #flow-select-body {{ padding: 1 2; }}
     #anomaly-hint {{ padding: 0 2; color: {MUTED}; }}
     #results-body {{ padding: 1 2; }}
