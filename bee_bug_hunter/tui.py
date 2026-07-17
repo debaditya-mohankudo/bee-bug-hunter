@@ -55,8 +55,7 @@ from dotenv import load_dotenv
 from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll
-from textual.screen import Screen
-from textual.widgets import Button, DataTable, Footer, Header, Markdown, SelectionList, Static
+from textual.widgets import Button, DataTable, Markdown, SelectionList, Static
 from textual.widgets.selection_list import Selection
 
 from bee_bug_hunter.agents import agent_summaries
@@ -70,7 +69,7 @@ from bee_bug_hunter.config import (
 )
 from bee_bug_hunter.logging_config import configure_logging, get_logger, log
 from bee_bug_hunter.orchestrator import run_flow_once
-from bee_bug_hunter.tui_widgets import EventFeed, bordered
+from bee_bug_hunter.tui_widgets import CustomScreen, EventFeed, bordered
 
 # Shared palette -- keep in sync with the .panel / component-class rules in
 # BugHunterApp.CSS below. Defined once here so screen code (e.g. the
@@ -82,23 +81,6 @@ AMBER = "#fbbf24"
 MUTED = "#5a6472"
 
 ui_logger = get_logger("bee_bug_hunter.tui")
-
-# Textual's Header has no built-in breadcrumb; this fakes one via sub_title,
-# rebuilt from the live screen stack whenever a screen is shown/resumed.
-BREADCRUMB_LABELS = {
-    "HomeScreen": "Home",
-    "FlowSelectScreen": "Select Flows to Run",
-    "AnomalyScreen": "Anomaly Signals",
-    "ResultsScreen": "Results",
-}
-
-
-def update_breadcrumb(app: "BugHunterApp") -> None:
-    # screen_stack's bottom entry is Textual's own implicit default screen, not
-    # one of ours -- skip anything not in BREADCRUMB_LABELS rather than showing it.
-    app.sub_title = " › ".join(
-        BREADCRUMB_LABELS[s.__class__.__name__] for s in app.screen_stack if s.__class__.__name__ in BREADCRUMB_LABELS
-    )
 
 
 def log_ui(event: str, **fields) -> None:
@@ -159,11 +141,14 @@ class FeedLogHandler(logging.Handler):
         self.feed.write_event(kind, EventFeed.escape(text))
 
 
-class HomeScreen(Screen):
-    """Landing screen: explains the app and lists the crew's agent roster."""
+class HomeScreen(CustomScreen):
+    """Landing screen: explains the app and lists the crew's agent roster.
+
+    Not part of the Select -> Anomalies -> Results flow, so compose_head() is
+    called with no step_index -- a plain Header, no BreadcrumbBar."""
 
     def compose(self) -> ComposeResult:
-        yield Header(show_clock=True)
+        yield from self.compose_head()
         # VerticalScroll (not a plain Vertical) + the two action buttons placed
         # right after the About panel: the Agent Config panel below can grow
         # with an arbitrary number of flows, and a plain Vertical would silently
@@ -188,13 +173,9 @@ class HomeScreen(Screen):
             )
             yield bordered(Static(self._agents_text(), id="agents-list"), "Agents").add_class("panel")
             yield bordered(Static(self._config_text(), id="config-details"), "Agent Config").add_class("panel")
-        yield Footer()
-
-    def on_mount(self) -> None:
-        update_breadcrumb(self.app)
+        yield from self.compose_foot()
 
     def on_screen_resume(self) -> None:
-        update_breadcrumb(self.app)
         # Refresh in case .env/manifest.yaml were hand-edited externally
         # while this screen was in the background.
         self.query_one("#config-details", Static).update(self._config_text())
@@ -258,7 +239,7 @@ class HomeScreen(Screen):
         self.app.start_flow_select("api")
 
 
-class FlowSelectScreen(Screen):
+class FlowSelectScreen(CustomScreen):
     """Pick a subset of the manifest's flows of one kind (UI or API), then run
     them sequentially.
 
@@ -266,6 +247,8 @@ class FlowSelectScreen(Screen):
     via `.display`, rather than pushing a separate "monitor" screen, so the
     app has exactly the four screens the user asked for while still keeping
     live progress visible during a run.
+
+    Step 1/3 in the Select -> Anomalies -> Results flow tracked by BreadcrumbBar.
     """
 
     BINDINGS = [("escape", "pop_screen", "Back")]
@@ -276,18 +259,17 @@ class FlowSelectScreen(Screen):
 
     def compose(self) -> ComposeResult:
         title = "Select UI Flows to Run" if self.kind == "ui" else "Select API Flows to Run"
-        yield Header(show_clock=True)
+        yield from self.compose_head(step_index=0)
         yield Vertical(
             bordered(SelectionList(id="flow-picker"), title).add_class("panel"),
             Button("Run Selected", id="run-selected", variant="primary"),
             bordered(EventFeed(id="event-feed"), "Live Run").add_class("panel"),
             id="flow-select-body",
         )
-        yield Footer()
+        yield from self.compose_foot()
 
     def on_mount(self) -> None:
         log_ui("ui_screen_shown", screen="FlowSelectScreen", kind=self.kind)
-        update_breadcrumb(self.app)
         picker = self.query_one("#flow-picker", SelectionList)
         for flow_cfg in self.app.manifest.get("flows", []):
             if flow_cfg.get("kind", "ui") != self.kind:
@@ -296,9 +278,6 @@ class FlowSelectScreen(Screen):
             label = f"{flow_cfg['name']}  [{containers}]" if containers else flow_cfg["name"]
             picker.add_option(Selection(label, flow_cfg["name"], True))
         self.query_one("#event-feed", EventFeed).display = False
-
-    def on_screen_resume(self) -> None:
-        update_breadcrumb(self.app)
 
     def on_selection_list_selected_changed(self, event: SelectionList.SelectedChanged) -> None:
         log_ui("ui_selection_changed", screen="FlowSelectScreen", selected=list(event.selection_list.selected))
@@ -326,8 +305,11 @@ class FlowSelectScreen(Screen):
         self.app.pop_screen()
 
 
-class AnomalyScreen(Screen):
-    """Deterministic anomaly signals per flow, from the last completed batch."""
+class AnomalyScreen(CustomScreen):
+    """Deterministic anomaly signals per flow, from the last completed batch.
+
+    Step 2/3 in the Select -> Anomalies -> Results flow tracked by BreadcrumbBar.
+    """
 
     BINDINGS = [
         ("escape", "pop_screen", "Back"),
@@ -335,7 +317,7 @@ class AnomalyScreen(Screen):
     ]
 
     def compose(self) -> ComposeResult:
-        yield Header(show_clock=True)
+        yield from self.compose_head(step_index=1)
         yield bordered(DataTable(id="anomaly-table"), "Anomaly Signals").add_class("panel")
         yield Static(
             "Signals are computed from the API Flow Runner / Docker Log Capturer's own "
@@ -343,11 +325,10 @@ class AnomalyScreen(Screen):
             "Press 'n' for the bug analysis / SQL performance report.",
             id="anomaly-hint",
         )
-        yield Footer()
+        yield from self.compose_foot()
 
     def on_mount(self) -> None:
         log_ui("ui_screen_shown", screen="AnomalyScreen", result_count=len(self.app.last_results))
-        update_breadcrumb(self.app)
         table = self.query_one("#anomaly-table", DataTable)
         table.add_columns("Flow", "Bug", "Perf", "HTTP Errors", "Failed Steps", "Error Containers", "Slow Containers")
         for row in self.app.last_results:
@@ -373,13 +354,16 @@ class AnomalyScreen(Screen):
         self.app.push_screen(ResultsScreen())
 
 
-class ResultsScreen(Screen):
-    """Per-flow bug analysis / SQL performance report from the last batch."""
+class ResultsScreen(CustomScreen):
+    """Per-flow bug analysis / SQL performance report from the last batch.
+
+    Step 3/3 in the Select -> Anomalies -> Results flow tracked by BreadcrumbBar.
+    """
 
     BINDINGS = [("escape", "pop_screen", "Back")]
 
     def compose(self) -> ComposeResult:
-        yield Header(show_clock=True)
+        yield from self.compose_head(step_index=2)
         with VerticalScroll(id="results-body"):
             if not self.app.last_results:
                 yield Static("No results yet.")
@@ -388,7 +372,7 @@ class ResultsScreen(Screen):
                     Markdown(self._report_markdown(row)),
                     f"{row['flow']}  (run {row['run_id']})",
                 ).add_class("panel")
-        yield Footer()
+        yield from self.compose_foot()
 
     @staticmethod
     def _report_markdown(row: dict) -> str:
@@ -408,7 +392,6 @@ class ResultsScreen(Screen):
 
     def on_mount(self) -> None:
         log_ui("ui_screen_shown", screen="ResultsScreen", result_count=len(self.app.last_results))
-        update_breadcrumb(self.app)
 
     def action_pop_screen(self) -> None:
         log_ui("ui_key_pressed", screen="ResultsScreen", key="escape")
@@ -509,6 +492,14 @@ class BugHunterApp(App):
     EventFeed {{
         background: #0d1119;
     }}
+    /* height: auto (not a fixed integer) on both rules -- a fixed height
+       combined with the active chip's border would otherwise consume the
+       whole row for the border and squash the label to zero height with
+       no exception raised (see feedback:b620263a). */
+    .breadcrumb-bar {{ height: auto; padding: 1 2; border-bottom: solid {MUTED} 30%; align: left middle; }}
+    .breadcrumb-chip {{ height: auto; width: auto; color: {MUTED}; padding: 0 1; }}
+    .breadcrumb-chip.active {{ height: auto; width: auto; color: {ACCENT}; text-style: bold; border: round {ACCENT}; padding: 0 1; }}
+    .breadcrumb-sep {{ height: auto; width: auto; color: {MUTED}; padding: 0 1; }}
     #home-body {{ padding: 1 2; }}
     #intro {{ padding: 1; }}
     #home-flow-buttons {{ height: auto; margin-bottom: 1; }}

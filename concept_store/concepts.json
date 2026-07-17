@@ -687,6 +687,29 @@
         "anomaly-detector-deterministic-routing"
       ]
     },
+    "tui-customscreen-breadcrumb-pattern": {
+      "confidence": 0.9,
+      "contracts": [
+        "compose_head(step_index) / compose_foot() replace the previously hand-repeated yield Header(...)/yield Footer() pairs in every screen's compose()"
+      ],
+      "created_at": "2026-07-17T07:07:46.359633+00:00",
+      "description": "All 4 TUI screens (HomeScreen, FlowSelectScreen, AnomalyScreen, ResultsScreen) subclass CustomScreen (tui_widgets.py) instead of Screen. CustomScreen.compose_head(step_index=None) yields Header(show_clock=True) plus a BreadcrumbBar(step_index) widget only when step_index is given; compose_foot() yields Footer(). BreadcrumbBar composes its active-step chip fresh at construction time from a current_index passed in by the caller, replacing a prior update_breadcrumb()/App.sub_title-mutation approach that was called from each screen's on_mount/on_screen_resume and went stale when popping back to a screen whose on_screen_resume never re-fired (task:e6b4e888).",
+      "evidence": [
+        "bee_bug_hunter/tui_widgets.py",
+        "bee_bug_hunter/tui.py:144-405"
+      ],
+      "invariants": [
+        "BreadcrumbBar state is fixed at screen-construction time, never mutated post-hoc -- a screen popped back to on the stack keeps the same BreadcrumbBar instance it was built with, so there is nothing to go stale regardless of on_screen_resume firing reliability",
+        "HomeScreen calls compose_head() with no step_index (plain Header, no BreadcrumbBar) since it is a hub, not a stage in the Select->Anomalies->Results flow",
+        "All new screens added to this TUI should subclass CustomScreen rather than Screen directly, per explicit user direction"
+      ],
+      "last_validated": "2026-07-17T07:07:46.359633+00:00",
+      "module": "bee_bug_hunter/tui_widgets.py",
+      "name": "tui-customscreen-breadcrumb-pattern",
+      "related": [
+        "tui-thread-and-logging-integration"
+      ]
+    },
     "tui-thread-and-logging-integration": {
       "confidence": 0.94,
       "contracts": [
@@ -697,21 +720,22 @@
       "evidence": [
         "bee_bug_hunter/tui.py:38-51",
         "bee_bug_hunter/tui.py:17-27",
-        "bee_bug_hunter/tui.py:104-108"
+        "bee_bug_hunter/tui.py:83"
       ],
       "invariants": [
         "The BEEAI_LOG_LEVEL setdefault must stay above the bee_bug_hunter.* imports — CONFIG.log_level is read once at import time",
         "Anomaly/Results screens read the anomaly/bug_report/perf_report keys of run_flow_once's return dict, sourced via delegation_capture",
         "Every bordered content panel carries the shared '.panel' class; UI colors come from the module-level palette constants, never re-hardcoded hex"
       ],
-      "last_validated": "2026-07-14T17:06:47.818553+00:00",
+      "last_validated": "2026-07-17T07:07:46.357519+00:00",
       "module": "bee_bug_hunter/tui.py",
       "name": "tui-thread-and-logging-integration",
       "related": [
         "orchestrator-flow-run-lifecycle",
         "delegation-capture-worker-output",
         "agents-static-roster-metadata",
-        "logging-jsonl-run-id-contextvar"
+        "logging-jsonl-run-id-contextvar",
+        "tui-customscreen-breadcrumb-pattern"
       ]
     }
   },
