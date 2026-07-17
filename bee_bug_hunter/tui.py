@@ -549,10 +549,15 @@ class BugHunterApp(App):
        combined with the active chip's border would otherwise consume the
        whole row for the border and squash the label to zero height with
        no exception raised (see feedback:b620263a). */
-    .breadcrumb-bar {{ height: auto; padding: 1 2; border-bottom: solid {MUTED} 30%; align: left middle; }}
-    .breadcrumb-chip {{ height: auto; width: auto; color: {MUTED}; padding: 0 1; }}
-    .breadcrumb-chip.active {{ height: auto; width: auto; color: {ACCENT}; text-style: bold; border: round {ACCENT}; padding: 0 1; }}
-    .breadcrumb-sep {{ height: auto; width: auto; color: {MUTED}; padding: 0 1; }}
+    /* All three chip/sep rules are exactly 1 row tall (no border on any of
+       them) -- a border on just the active chip made it 3 rows tall while
+       its siblings stayed at 1, staggering the whole row instead of
+       aligning on one line. A background badge highlights the active chip
+       without changing its height. */
+    .breadcrumb-bar {{ height: auto; padding: 0 2; border-bottom: solid {MUTED} 30%; align: left middle; }}
+    .breadcrumb-chip {{ height: 1; width: auto; color: {MUTED}; padding: 0 1; }}
+    .breadcrumb-chip.active {{ height: 1; width: auto; background: {ACCENT} 20%; color: {ACCENT}; text-style: bold; padding: 0 1; }}
+    .breadcrumb-sep {{ height: 1; width: auto; color: {MUTED}; padding: 0 1; }}
     #home-body {{ padding: 1 2; }}
     #intro {{ padding: 1; }}
     #home-flow-buttons {{ height: auto; margin-bottom: 1; }}
