@@ -97,3 +97,5 @@ cd demo_app && docker compose up --build -d
 cd .. && python -m bee_bug_hunter.main --once
 ```
 
+## Project Planning
+Epic planning, subtask creation, task grooming, task implementation using https://github.com/debaditya-mohankudo/Lite-Task-Framework-w-Claude-hooks
