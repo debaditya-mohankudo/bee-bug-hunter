@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Prompt cache
+
+A `user_prompt_submit` hook (`CacheCheckNode` in claude-hooks) looks up each incoming prompt against a prompt cache and, on a hit, injects a `## Cached answer available` block into the system prompt with match type (exact/fuzzy) and staleness. When that block appears: stop and act on it — surface the cached answer to the user and ask whether they want it (noting explicitly if it's a fuzzy match) before re-deriving the answer from scratch. Don't silently skip past the injection and spawn research work that duplicates what's already cached.
+
 ## Setup
 
 ```bash
