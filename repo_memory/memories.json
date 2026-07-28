@@ -1,0 +1,109 @@
+{
+  "memories": {
+    "bee-bug-hunter-claude-native-skill-planned": {
+      "body": "Decided (2026-07-13) to pursue a separate Claude-native investigation skill for the bee-bug-hunter demo_app bugs, as a future/unscoped task (tracker id 2a6043ae under epic 85b8e550) -- distinct from the bee-bug-hunter BeeAI-framework repo itself, not a mode within it. The skill would use Claude's own native multi-turn agentic tool-calling loop (not BeeAI's RequirementAgent forced-tool_choice-per-step machinery), and would be given the memory MCP tools (mcp__claude-hooks__memory__*) and task MCP tools (mcp__claude-hooks__tasks__*) to help it reason/record findings across turns.\nWhy: bee-bug-hunter's claude_cli LLM provider (removed same session) bridged Claude through a forced-tool_choice-per-step, no-prompt-caching text protocol -- a bad fit for a model with native tool calling and large cacheable context. Measured ~36% wasted-call rate and 25 subprocess calls with zero cache reuse for a single flow investigation. bee-bug-hunter itself now defaults to LLM_PROVIDER=ollama with qwen3:4b, since the heavily-decomposed/forced-tool-choice pattern suits small local models needing scaffolding, not Claude.\nHow to apply: if asked to build/continue this Claude-native skill, do NOT route it through bee-bug-hunter's manager/worker RequirementAgent code -- build it as its own skill giving Claude direct access to the demo_app's tools (Playwright/requests, docker logs, MySQL) plus the memory/task MCP tools, letting it drive its own investigation loop natively.",
+      "created_at": "2026-07-28T03:18:47.363513+00:00",
+      "files": "",
+      "last_validated": "2026-07-28T03:18:47.363513+00:00",
+      "name": "bee-bug-hunter-claude-native-skill-planned",
+      "related": "",
+      "tags": "claude native skill mcp memory tasks tools bee bug hunter future work alternative architecture ollama qwen local model claude_cli removed",
+      "type": "project"
+    },
+    "bee-bug-hunter-skip-beeai-logger-module": {
+      "body": "Decision: do NOT adopt beeai_framework.logger.Logger (https://framework.beeai.dev/modules/logger) in this project. Evaluated 2026-07-14 as a follow-on to adopting beeai_framework.errors (see [[bee-bug-hunter-tools-swallow-errors-by-design]]).\n\nWhy: BeeAI's Logger is a thin logging.Logger subclass — plain-text console formatter (\"{asctime} | {levelname} | {name}:{funcName}:{lineno} - {message}\") plus a custom TRACE level. No JSON output, no file handler/rotation, no structured extra fields, no run correlation id. Our own bee_bug_hunter/logging_config.py already does strictly more: JSONL output (stdout + rotating file), run_id/flow contextvars stamped on every line, log(logger, level, msg, **fields) merging structured fields into the JSON payload — the whole `grep '\"run_id\": \"<id>\"' logs/bee_bug_hunter.jsonl | jq .` workflow documented in CLAUDE.md's Observability section depends on this, as does the FrameworkError structured-error-field work (error_type/is_fatal/is_retryable/error_chain) from task:06a37660. Swapping to BeeAI's Logger would mean losing all of that and re-implementing it as a subclass anyway, for the sole benefit of a TRACE level we don't need.\n\nHow to apply: if BeeAI's logger module is suggested again for this project, this evaluation already answers it — no need to re-derive. Revisit only if BeeAI's Logger gains structured/JSON output or run-correlation support in a future version.",
+      "created_at": "2026-07-28T03:18:26.672730+00:00",
+      "files": "",
+      "last_validated": "2026-07-28T03:18:26.672730+00:00",
+      "name": "bee-bug-hunter-skip-beeai-logger-module",
+      "related": "",
+      "tags": "beeai framework logger logging_config JSONL run_id structured logging decision skip",
+      "type": "project"
+    },
+    "bee-bug-hunter-tools-swallow-errors-by-design": {
+      "body": "Every worker tool in bee_bug_hunter/tools/ (mysql_tool.py, docker_log_tool.py, api_request_tool.py, playwright_tool.py, read_source_tool.py, anomaly_tool.py) catches its own exceptions internally and returns a `{\"error\": ...}` JSON string / StringToolOutput to the calling agent instead of raising — by design, so the LLM sees the failure and can adapt/retry within the run rather than crashing the whole supervisor loop.\n\nWhy: confirmed while scoping task:06a37660 (adopting beeai_framework.errors.FrameworkError for structured logging). Wrapping these tools in ToolError and raising would invert this design.\n\nHow to apply: any future error-handling work on bee_bug_hunter tools should NOT make them raise FrameworkError/ToolError — that's an anti-pattern here. FrameworkError adoption belongs only at the supervisor.run() boundary in orchestrator.py (already done), not inside individual tool implementations. Don't re-investigate this question — it's settled.",
+      "created_at": "2026-07-28T03:18:30.658321+00:00",
+      "files": "",
+      "last_validated": "2026-07-28T03:18:30.658321+00:00",
+      "name": "bee-bug-hunter-tools-swallow-errors-by-design",
+      "related": "",
+      "tags": "beeai framework error handling tools mysql docker playwright read_source api_request FrameworkError ToolError agent adapt",
+      "type": "project"
+    },
+    "beeai-conditionalrequirement-cross-agent-scope": {
+      "body": "BeeAI's ConditionalRequirement can only constrain tools visible to the RequirementAgent it's attached to -- it cannot see another agent's internal tool calls. Why: each RequirementAgent has its own isolated tool list; a worker agent has no reference to another worker's tools. How to apply: to enforce 'agent B must run before agent C is delegated to' in a manager/worker (HandoffTool) architecture, the ConditionalRequirement must be attached to the manager/supervisor's own requirements=[...], targeting the CapturingHandoffTool/HandoffTool objects themselves (e.g. ConditionalRequirement(handoff_c, only_after=handoff_b)) -- not attached to worker C's own RequirementAgent, which has no way to know whether worker B ran.",
+      "created_at": "2026-07-28T03:18:49.965087+00:00",
+      "files": "",
+      "last_validated": "2026-07-28T03:18:49.965087+00:00",
+      "name": "beeai-conditionalrequirement-cross-agent-scope",
+      "related": "",
+      "tags": "beeai requirementagent conditionalrequirement handoff ordering enforcement structural cross-agent scope task:819d00c2",
+      "type": "project"
+    },
+    "beeai-requirement-testing-without-llm": {
+      "body": "BeeAI ConditionalRequirement objects can be unit-tested deterministically without any live LLM call or external service. Why: `requirement.init(tools=[...], ctx=None)` resolves the source/target tool references, and `requirement.run(state)` returns Rule objects (with .allowed/.forced) purely from a constructed RequirementAgentRunState -- no network I/O. How to apply: build a RequirementAgentRunState with UnconstrainedMemory() and RequirementAgentRunStateStep entries (output must be a ToolOutput instance like StringToolOutput, not a plain str, or pydantic validation fails) to simulate 'tool X already ran', then assert on the returned Rule.allowed/forced. This is the fast, CI-safe way to test agent orchestration/ordering logic in this beeai-framework version (0.1.81).",
+      "created_at": "2026-07-28T03:18:52.736930+00:00",
+      "files": "",
+      "last_validated": "2026-07-28T03:18:52.736930+00:00",
+      "name": "beeai-requirement-testing-without-llm",
+      "related": "",
+      "tags": "beeai testing conditionalrequirement unit test no llm mock run state pytest task:819d00c2",
+      "type": "project"
+    },
+    "claude-p-fork-session-verified-isolation": {
+      "body": "`claude -p --resume <id> --fork-session` is empirically verified to produce a new, distinct session_id that inherits the source session's context up to the fork point, with NO leakage in either direction afterward (adding new facts to the fork doesn't appear in the root, and vice versa). Confirmed via direct testing: root taught a secret word, fork correctly recalled it, then a second fact added only to the fork was absent when re-forking the root again.\nWhy: this is the mechanism for a 'shared nervous system, isolated organs' architecture -- one shared root session with common/generic context, N independent branches forked off it for role-specific continuations (different tool schemas per branch, etc.) without any branch's tool-schema or conversation bleeding into another's.\nHow to apply: use `--session-id <uuid>` once to create a root with only generic/shared framing (no role-specific tool schemas or instructions), then `--resume <root_id> --fork-session` once per role/branch to get an isolated child session; persist the returned new session_id (from the CLI's JSON output's session_id field) and `--resume` it directly (no fork flag) on all subsequent calls for that branch. See [[claude-p-session-based-prompt-caching]] for the base session-id/resume mechanism this extends.",
+      "created_at": "2026-07-28T03:18:41.813179+00:00",
+      "files": "",
+      "last_validated": "2026-07-28T03:18:41.813179+00:00",
+      "name": "claude-p-fork-session-verified-isolation",
+      "related": "",
+      "tags": "claude -p cli fork-session session-id resume isolation shared root branch verified empirically task:b927e37c",
+      "type": "reference"
+    },
+    "claude-p-session-based-prompt-caching": {
+      "body": "`claude -p` (Claude Code CLI, non-interactive/print mode) supports session-based prompt caching via `--session-id <uuid>` (fix an id on the first call) + `-r/--resume <uuid>` or `-c/--continue` (resume that exact session on later calls). Session persistence is on by default in -p mode (only `--no-session-persistence` disables it). `--fork-session` creates a new id instead of reusing on resume.\nWhy: bee-bug-hunter's now-removed ClaudeCLIChatModel (see [[agent-framework-forced-tool-choice-poor-fit-for-frontier-models]]) called `claude -p` fresh (no session flags) on every single reasoning step, reflattening and resending the ENTIRE conversation history as one new prompt each time (_flatten_messages). A brand-new sessionless subprocess every call has no identical/growing prefix for Anthropic's prompt cache to hit against, so every one of the 25 calls in the measured run was a cold, full-price call.\nHow to apply: if `claude -p` is ever used again for a multi-turn agent (e.g. for [[bee-bug-hunter-claude-native-skill-planned]]), give each conversation a fixed session_id at construction, call with `--session-id <id>` on the first turn and `--resume <id>` on every subsequent turn, sending only the NEW incremental message each time (not the full re-flattened history) -- the session already holds prior turns. This is a stateful-session architecture change, not a flag tweak on the existing one-shot-per-call design.",
+      "created_at": "2026-07-28T03:18:36.096764+00:00",
+      "files": "",
+      "last_validated": "2026-07-28T03:18:36.096764+00:00",
+      "name": "claude-p-session-based-prompt-caching",
+      "related": "",
+      "tags": "claude -p cli session id resume continue prompt cache caching cold call subprocess bee bug hunter claude_cli",
+      "type": "reference"
+    },
+    "cypress-playwright-migrator-model-choice": {
+      "body": "The Cypress→Playwright migration agent project (epic fd7c8e12, planned repo ~/workspace/cypress-playwright-migrator) uses LLM_PROVIDER=ollama with model Qwen2.5-Coder-7B-Instruct at full precision (fp16, unquantized, ~15GB in memory) — FINAL, reconfirmed after comparing newer 2026 alternatives.\n\nWhy: target hardware is a 32GB M3 Pro Mac running docker compose (app+db) and Chromium concurrently, leaving ~15-17GB headroom. Newer/larger local coding models were evaluated (Qwen3-Coder-30B-A3B-Instruct, Qwen3.6-27B, Gemma 4 26B A4B, DeepSeek V4/Coder-V2) — most don't fit 32GB (DeepSeek's 2026 frontier needs 100GB+), and the ones that do only offer stronger agentic tool-calling at the cost of trading fp16 for Q4 quantization. User's explicit deciding reason: every agent in this project's manager/worker BeeAI architecture only ever chooses among a small, narrow tool set (manager: a handful of HandoffTools; each worker: 1-3 domain tools like docker logs/MySQL/Playwright) — tool-calling reliability problems mostly appear when a model must discriminate among many similar options, not a handful of clearly distinct ones, so a newer model's stronger agentic training buys little here. One model serves the whole pipeline (converter, manager, analyst, self-healing) — no phase-splitting needed at this RAM budget.\n\nHow to apply: when continuing work on this project, treat Qwen2.5-Coder-7B-Instruct fp16 as settled — don't re-raise newer/larger model alternatives unless the user reports actual tool-calling failures (missed_required_tool_call) or RAM pressure in practice. If that happens, the agreed escalation path is a quantized 14B-30B model (e.g. Qwen3-Coder-30B-A3B-Instruct), not another 7B variant. Note Ollama's library is GGUF-quantized by default for most models — verify an fp16 tag exists or build a custom Modelfile from HF safetensors before assuming a direct pull works.",
+      "created_at": "2026-07-28T03:18:20.881203+00:00",
+      "files": "",
+      "last_validated": "2026-07-28T03:18:20.881203+00:00",
+      "name": "cypress-playwright-migrator-model-choice",
+      "related": "",
+      "tags": "cypress playwright migration ollama qwen coder instruct fp16 unquantized 32gb m3 pro model choice epic fd7c8e12 narrow tool set final",
+      "type": "project"
+    },
+    "textual-app-level-widget-mutation-from-worker-thread": {
+      "body": "In bee_bug_hunter/tui.py, FeedLogHandler.emit() (a logging.Handler callback invoked from the batch-run worker thread, not the Textual main thread) mutates widget/app state directly — self.feed.write_event(...), self.feed.border_title = ..., self.feed.app.sub_title = ... — with no call_from_thread wrapping. This is an established, working pattern in this file (write_event predates task:99d98198's sub_title/border_title additions), not something introduced ad hoc.\n\nWhy: Textual's official guidance is that widget mutation from a non-UI thread should go through call_from_thread, but this codebase's logging.Handler-as-UI-bridge pattern predates that being applied, and retrofitting it would mean threading a Textual App/widget reference through logging.Handler.emit's synchronous, non-async call signature — non-trivial for what have so far been simple attribute sets and RichLog appends.\n\nHow to apply: when extending FeedLogHandler or a similar logging-bridge-to-TUI pattern in this repo, match the existing convention (direct attribute mutation, no call_from_thread) for consistency rather than introducing a new thread-safety pattern for only the new code. If this ever causes a visible bug (garbled render, missed update), that's the trigger to migrate the whole class to call_from_thread, not before.",
+      "created_at": "2026-07-28T03:18:06.699797+00:00",
+      "files": "",
+      "last_validated": "2026-07-28T03:18:06.699797+00:00",
+      "name": "textual-app-level-widget-mutation-from-worker-thread",
+      "related": "",
+      "tags": "textual tui worker thread call_from_thread sub_title border_title reactive attribute safe mutation logging.Handler task:99d98198",
+      "type": "project"
+    },
+    "textual-breadcrumb-compose-time-not-lifecycle-hook": {
+      "body": "In Textual TUIs, never implement a multi-screen breadcrumb by mutating App.sub_title imperatively from each screen's on_mount/on_screen_resume. A screen that's popped back to (rather than freshly pushed) may never reliably re-fire on_screen_resume across Textual versions, leaving the breadcrumb stale after back-navigation -- confirmed as a real, reproducible bug in bee_bug_hunter's tui.py (task:e6b4e888, found while grooming task:99d98198) and independently in ACME Certificate Lifecycle Agent's tui/app.py (task:a4d5b2f0), which had to override push_screen/pop_screen directly to work around on_screen_resume unreliability.\n\nWhy: the correct fix is docker_log_analyzer's CustomScreen + BreadcrumbBar pattern (task:7323b8ef) -- a BreadcrumbBar(Horizontal) widget composed fresh into each screen's compose(), keyed off a current_index passed at construction time. Because the active chip is baked in at construction, a screen popped back to still has the same BreadcrumbBar instance it was built with -- there is structurally nothing to go stale, regardless of whether on_screen_resume fires.\n\nHow to apply: whenever building or reviewing a Textual TUI with a multi-step flow, use a CustomScreen base class (compose_head(step_index)/compose_foot() helpers) + a BreadcrumbBar widget rendered per-screen, not App.sub_title mutation. Reference implementations: docker_log_analyzer/tui.py:104-152,362-392 and bee_bug_hunter/tui_widgets.py's BreadcrumbBar/CustomScreen (added in task:e6b4e888).",
+      "created_at": "2026-07-28T03:18:12.863935+00:00",
+      "files": "",
+      "last_validated": "2026-07-28T03:18:12.863935+00:00",
+      "name": "textual-breadcrumb-compose-time-not-lifecycle-hook",
+      "related": "",
+      "tags": "textual tui breadcrumb sub_title screen stack pop stale on_screen_resume lifecycle hook BreadcrumbBar CustomScreen compose",
+      "type": "project"
+    }
+  },
+  "meta": {
+    "commit": "",
+    "extracted_at": "",
+    "note": ""
+  }
+}
