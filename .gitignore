@@ -6,3 +6,4 @@ reports/
 .captures/
 .claude_cli_sessions.json
 .DS_Store
+.coverage
