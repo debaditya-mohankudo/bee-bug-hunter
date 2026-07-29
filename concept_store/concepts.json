@@ -114,6 +114,26 @@
         "manager-flow-kind-selects-runner-tool"
       ]
     },
+    "beeai-tool-native-cache-option": {
+      "confidence": 0.93,
+      "contracts": [
+        "Tool.run()'s cache lookup is a truthy check (\"if result:\"), not \"is not None\" -- a cached falsy/empty result would be treated as a miss",
+        "cache.enabled toggles the entire mechanism off; NullCache() (the default when no options={\"cache\":...} is passed) always misses"
+      ],
+      "created_at": "2026-07-29T03:02:54.445347+00:00",
+      "description": "BeeAI's Tool base class (beeai_framework.tools.tool.Tool) has generic built-in per-call caching: Tool.__init__ accepts options={\"cache\": <BaseCache instance>}, and Tool.run() wraps every _run() call with an automatic cache.get()/cache.set() around it, keyed via self._generate_key(input, options) (default: BaseCache.generate_key, a sha512 hash of sorted input+options; overridable per-subclass). Discovered while scoping task:fdd49134's middleware epic (originally going to write a RunMiddlewareProtocol cache middleware for MySQLQueryTool) -- no middleware is needed for generic tool-call caching at all, since the framework already provides it per-Tool. mysql_tool.py's MySQLQueryTool is the first (and so far only) adopter, via a small BaseCache subclass (_SchemaOnlyCache, see mysql-schema-introspection-cache) that adds selectivity + error-suppression on top of the raw mechanism. Relevant to any future tool wanting caching -- reach for options={\"cache\": ...} + an optional _generate_key override before reaching for a middleware.",
+      "evidence": [
+        ".venv/lib/python3.11/site-packages/beeai_framework/tools/tool.py:47-141",
+        "bee_bug_hunter/tools/mysql_tool.py:100-179"
+      ],
+      "invariants": [
+        "Tool.clone() (e.g. via HandoffTool delegation) copies the cache via await self._cache.clone(), but this codebase's actual delegation path (RequirementAgent.clone()'s tools=self._tools.copy()) reuses the same Tool objects rather than cloning them, so this clone path doesn't fire here in practice",
+        "No automatic reset of any kind is provided by the framework -- a cache passed via options={\"cache\": ...} lives exactly as long as the Python object referenced there; any pass/poll-cycle-scoped reset must be implemented explicitly by the caller (see clear_schema_cache())"
+      ],
+      "last_validated": "2026-07-29T03:02:54.445347+00:00",
+      "module": "bee_bug_hunter/tools/mysql_tool.py",
+      "name": "beeai-tool-native-cache-option"
+    },
     "claude-cli-root-fork-session-topology": {
       "confidence": 0.95,
       "contracts": [
@@ -478,24 +498,27 @@
     },
     "mysql-schema-introspection-cache": {
       "confidence": 0.96,
-      "contracts": [],
+      "contracts": [
+        "MySQLQueryTool()'s options={\"cache\": ...} defaults to get_schema_cache() via kwargs.setdefault() inside __init__ if the caller doesn't pass one -- agents.py constructs MySQLQueryTool(**mysql_cfg) with no explicit options=, relying entirely on this default"
+      ],
       "created_at": "2026-07-14T15:23:50.326874+00:00",
-      "description": "A module-level UnconstrainedCache shared by every MySQLQueryTool instance (DB Query Agent's and SQL Performance Agent's, across all flows in a batch pass) caches schema-introspection results — EXPLAIN, SHOW COLUMNS/TABLES/INDEX/CREATE TABLE, DESCRIBE — because plan/schema shape is driven by schema state, not live row content. Plain SELECTs deliberately bypass it since row data can legitimately change mid-investigation.",
+      "description": "Schema-introspection results (EXPLAIN, SHOW COLUMNS/TABLES/INDEX/CREATE TABLE, DESCRIBE) are cached via BeeAI's native Tool-level caching (Tool.__init__(options={\"cache\": ...}), Tool.run()'s automatic get/set around _run()), not a hand-rolled cache check inside _run(). A _SchemaOnlyCache (BaseCache subclass wrapping UnconstrainedCache) is the module-level singleton passed as that cache: its get()/set() only actually store/return entries whose key is tagged \"schema::\" by MySQLQueryTool._generate_key -- every other key (plain SELECTs, refused writes) always misses, which is what makes the otherwise-unconditional native per-Tool caching safe to use here at all, since row content can legitimately change between calls within the same investigation. get_schema_cache() is called fresh at MySQLQueryTool construction time (not captured once at import) so every flow's tools pick up the current instance.",
       "evidence": [
-        "bee_bug_hunter/tools/mysql_tool.py:23-52",
-        "bee_bug_hunter/tools/mysql_tool.py:124-140"
+        "bee_bug_hunter/tools/mysql_tool.py:29-119",
+        "bee_bug_hunter/tools/mysql_tool.py:169-179"
       ],
       "invariants": [
-        "Cache key includes resolved host:port/database, not just query text — two flows EXPLAINing the same query against different DBs must not collide",
-        "Only successful (error-free) results are cached",
-        "clear_schema_cache() rebinds a fresh instance (sync-callable) and must run at the top of every run_batch_once pass"
+        "Cache key (MySQLQueryTool._generate_key) includes resolved host:port/database, not just query text -- two flows EXPLAINing the same query against different DBs must not collide",
+        "_SchemaOnlyCache.set() refuses to persist any result whose JSON body carries an \"error\" key -- native Tool.run() caches whatever _run() returns on any non-exception path (tools here never raise), so without this a transient query failure would get cached as permanent for the rest of the batch pass instead of being retried",
+        "clear_schema_cache() rebinds _schema_cache to a fresh _SchemaOnlyCache instance (sync-callable, not an awaited .clear()) and must run at the top of every run_batch_once pass -- scoped to one poll cycle in monitor_loop, not persisted across polls, so a schema change made between poll cycles (e.g. an index added while continuously monitoring) is picked up on the next pass rather than served stale forever"
       ],
-      "last_validated": "2026-07-14T17:06:47.808938+00:00",
+      "last_validated": "2026-07-29T03:04:51.595177+00:00",
       "module": "bee_bug_hunter/tools/mysql_tool.py",
       "name": "mysql-schema-introspection-cache",
       "related": [
         "mysql-tool-read-only-gate",
-        "orchestrator-batch-pass-resets"
+        "orchestrator-batch-pass-resets",
+        "beeai-tool-native-cache-option"
       ]
     },
     "mysql-tool-read-only-gate": {
@@ -504,21 +527,18 @@
         "Returns JSON {query, row_count, rows} on success or {query, error} / {error} on failure — never raises to the agent loop"
       ],
       "created_at": "2026-07-14T15:23:50.326375+00:00",
-      "description": "MySQLQueryTool rejects INSERT/UPDATE/DELETE/DROP/ALTER/TRUNCATE/CREATE via a leading-keyword regex and returns {'error': 'refused: ...'} instead of executing; EXPLAIN/SHOW/DESCRIBE pass. Connection fields resolve per-flow override -> MYSQL_* env var -> APP_DB_CONN fallback. Results are capped at fetchmany(200).",
+      "description": "MySQLQueryTool rejects INSERT/UPDATE/DELETE/DROP/ALTER/TRUNCATE/CREATE via a leading-keyword regex and returns {'error': 'refused: ...'} instead of executing; EXPLAIN/SHOW/DESCRIBE pass. Connection fields resolve per-flow override -> MYSQL_* env var -> APP_DB_CONN fallback. Results are capped at fetchmany(200). _run() itself now only calls _query_sync and wraps the result -- caching is handled entirely outside _run() by Tool.run()'s native wrapper (see mysql-schema-introspection-cache), so this gate's write-refusal logic is unaffected by and independent of the caching migration.",
       "evidence": [
-        "bee_bug_hunter/tools/mysql_tool.py:18",
-        "bee_bug_hunter/tools/mysql_tool.py:96-122"
+        "bee_bug_hunter/tools/mysql_tool.py:19",
+        "bee_bug_hunter/tools/mysql_tool.py:181-207"
       ],
       "invariants": [
         "Row contents may hold customer/PII data — logs carry query text, row count, and timing ONLY, never row values",
         "Write rejection happens before any connection is opened"
       ],
-      "last_validated": "2026-07-14T17:06:47.807482+00:00",
+      "last_validated": "2026-07-29T03:02:33.694286+00:00",
       "module": "bee_bug_hunter/tools/mysql_tool.py",
-      "name": "mysql-tool-read-only-gate",
-      "related": [
-        "mysql-schema-introspection-cache"
-      ]
+      "name": "mysql-tool-read-only-gate"
     },
     "orchestrator-batch-pass-resets": {
       "confidence": 0.96,

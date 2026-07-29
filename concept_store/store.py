@@ -48,22 +48,32 @@ class ConceptStore:
     # Writes
     # ------------------------------------------------------------------
 
+    _FIELDS = ("module", "description", "invariants", "contracts", "confidence", "evidence", "related")
+    _FIELD_DEFAULTS = {"invariants": [], "contracts": [], "evidence": [], "related": [], "confidence": 0.0, "module": "", "description": ""}
+
     def upsert(self, concept: dict) -> None:
+        """Merges onto any existing entry for this name -- only fields actually
+        present in `concept` are overwritten; a field simply omitted from the
+        call (as opposed to explicitly passed as "" / [] / 0.0) keeps its prior
+        value rather than being reset to empty. A full-replace call (all fields
+        supplied) still behaves exactly as a full overwrite, matching this
+        format's documented "upsert() fully overwrites" semantics for in-place
+        correction -- this only fixes the case where a caller only means to
+        touch a subset of fields (e.g. a `related` link-up pass) and would
+        otherwise silently wipe the rest of the concept."""
         name = concept["name"]
         now = datetime.now(timezone.utc).isoformat()
         existing = self._data.get(name, {})
-        self._data[name] = {
-            "name":           name,
-            "module":         concept.get("module", ""),
-            "description":    concept.get("description", ""),
-            "invariants":     concept.get("invariants", []),
-            "contracts":      concept.get("contracts", []),
-            "confidence":     concept.get("confidence", 0.0),
-            "evidence":       concept.get("evidence", []),
-            "related":        concept.get("related", []),
-            "last_validated": now,
-            "created_at":     existing.get("created_at", now),
-        }
+        merged = dict(existing)
+        merged["name"] = name
+        for field in self._FIELDS:
+            if field in concept:
+                merged[field] = concept[field]
+            elif field not in merged:
+                merged[field] = self._FIELD_DEFAULTS[field]
+        merged["last_validated"] = now
+        merged["created_at"] = existing.get("created_at", now)
+        self._data[name] = merged
         self.save()
 
     def delete(self, name: str) -> None:
