@@ -6,6 +6,11 @@ SELECT's data, which can legitimately change between calls. The cache is
 module-level (shared by every MySQLQueryTool instance/flow in the same
 run_batch_once pass), so each test clears it via clear_schema_cache() for
 isolation. pymysql is monkeypatched so no live MySQL is needed.
+
+Caching now lives in BeeAI's native Tool.run() wrapper (options={"cache": ...}
+passed at construction, keyed via MySQLQueryTool._generate_key), not in
+MySQLQueryTool._run() itself -- so these tests call tool.run(...), not
+tool._run(...) directly, to actually exercise the cache path.
 """
 from unittest.mock import MagicMock, patch
 
@@ -47,10 +52,10 @@ async def test_explain_cache_hit_skips_pymysql_connect():
     conn, cursor = _fake_connect([{"id": 1, "select_type": "SIMPLE", "table": "orders", "key": None}])
 
     with patch("bee_bug_hunter.tools.mysql_tool.pymysql.connect", return_value=conn) as mock_connect:
-        first = await tool._run(RunQueryInput(query="EXPLAIN SELECT * FROM orders"), None, None)
+        first = await tool.run(RunQueryInput(query="EXPLAIN SELECT * FROM orders"))
         assert mock_connect.call_count == 1
 
-        second = await tool._run(RunQueryInput(query="EXPLAIN SELECT * FROM orders"), None, None)
+        second = await tool.run(RunQueryInput(query="EXPLAIN SELECT * FROM orders"))
         # Second call is a cache hit -- pymysql.connect must not be called again.
         assert mock_connect.call_count == 1
 
@@ -64,7 +69,7 @@ async def test_explain_cache_miss_populates_cache():
 
     with patch("bee_bug_hunter.tools.mysql_tool.pymysql.connect", return_value=conn):
         assert await _current_cache_size() == 0
-        await tool._run(RunQueryInput(query="EXPLAIN SELECT * FROM orders"), None, None)
+        await tool.run(RunQueryInput(query="EXPLAIN SELECT * FROM orders"))
         assert await _current_cache_size() == 1
 
 
@@ -79,8 +84,8 @@ async def test_two_tool_instances_share_the_module_level_cache():
     conn, _cursor = _fake_connect([{"id": 1}])
 
     with patch("bee_bug_hunter.tools.mysql_tool.pymysql.connect", return_value=conn) as mock_connect:
-        first = await db_query_agent_tool._run(RunQueryInput(query="EXPLAIN SELECT * FROM orders"), None, None)
-        second = await sql_perf_agent_tool._run(RunQueryInput(query="EXPLAIN SELECT * FROM orders"), None, None)
+        first = await db_query_agent_tool.run(RunQueryInput(query="EXPLAIN SELECT * FROM orders"))
+        second = await sql_perf_agent_tool.run(RunQueryInput(query="EXPLAIN SELECT * FROM orders"))
 
     # Second instance's identical EXPLAIN is a cache hit -- only one real call,
     # and both instances see the same cached result.
@@ -105,8 +110,8 @@ async def test_show_and_describe_variants_are_cached_like_explain(query):
     conn, _cursor = _fake_connect([{"Field": "id"}])
 
     with patch("bee_bug_hunter.tools.mysql_tool.pymysql.connect", return_value=conn) as mock_connect:
-        await tool._run(RunQueryInput(query=query), None, None)
-        await tool._run(RunQueryInput(query=query), None, None)
+        await tool.run(RunQueryInput(query=query))
+        await tool.run(RunQueryInput(query=query))
 
     # Second identical call is a cache hit, same as EXPLAIN.
     assert mock_connect.call_count == 1
@@ -118,8 +123,8 @@ async def test_plain_select_never_touches_explain_cache():
     conn, _cursor = _fake_connect([{"id": 1}])
 
     with patch("bee_bug_hunter.tools.mysql_tool.pymysql.connect", return_value=conn) as mock_connect:
-        await tool._run(RunQueryInput(query="SELECT * FROM orders"), None, None)
-        await tool._run(RunQueryInput(query="SELECT * FROM orders"), None, None)
+        await tool.run(RunQueryInput(query="SELECT * FROM orders"))
+        await tool.run(RunQueryInput(query="SELECT * FROM orders"))
 
     # Not an EXPLAIN -- both calls must hit the DB, no caching applied.
     assert mock_connect.call_count == 2
@@ -137,10 +142,15 @@ async def test_failed_explain_is_not_cached():
     cursor.execute.side_effect = RuntimeError("table doesn't exist")
     conn.cursor.return_value.__enter__.return_value = cursor
 
-    with patch("bee_bug_hunter.tools.mysql_tool.pymysql.connect", return_value=conn):
-        result = await tool._run(RunQueryInput(query="EXPLAIN SELECT * FROM missing_table"), None, None)
+    with patch("bee_bug_hunter.tools.mysql_tool.pymysql.connect", return_value=conn) as mock_connect:
+        result = await tool.run(RunQueryInput(query="EXPLAIN SELECT * FROM missing_table"))
+        # A second identical call must hit the DB again -- an error result must
+        # never be served from cache (would otherwise cache a transient failure
+        # as permanent for the rest of the batch pass).
+        await tool.run(RunQueryInput(query="EXPLAIN SELECT * FROM missing_table"))
 
     assert "table doesn't exist" in result.get_text_content()
+    assert mock_connect.call_count == 2
     assert await _current_cache_size() == 0
 
 
@@ -150,8 +160,8 @@ async def test_explain_cache_is_keyed_on_exact_query_text():
     conn, _cursor = _fake_connect([{"id": 1}])
 
     with patch("bee_bug_hunter.tools.mysql_tool.pymysql.connect", return_value=conn) as mock_connect:
-        await tool._run(RunQueryInput(query="EXPLAIN SELECT * FROM orders"), None, None)
-        await tool._run(RunQueryInput(query="EXPLAIN SELECT * FROM users"), None, None)
+        await tool.run(RunQueryInput(query="EXPLAIN SELECT * FROM orders"))
+        await tool.run(RunQueryInput(query="EXPLAIN SELECT * FROM users"))
 
     # Different query text -- both are cache misses, both hit the DB.
     assert mock_connect.call_count == 2
@@ -168,8 +178,8 @@ async def test_explain_cache_does_not_collide_across_different_databases():
     conn, _cursor = _fake_connect([{"id": 1}])
 
     with patch("bee_bug_hunter.tools.mysql_tool.pymysql.connect", return_value=conn) as mock_connect:
-        await tool_db_a._run(RunQueryInput(query="EXPLAIN SELECT * FROM orders"), None, None)
-        await tool_db_b._run(RunQueryInput(query="EXPLAIN SELECT * FROM orders"), None, None)
+        await tool_db_a.run(RunQueryInput(query="EXPLAIN SELECT * FROM orders"))
+        await tool_db_b.run(RunQueryInput(query="EXPLAIN SELECT * FROM orders"))
 
     # Same query text, different database -- both must be real cache misses.
     assert mock_connect.call_count == 2
@@ -179,6 +189,18 @@ async def test_explain_cache_does_not_collide_across_different_databases():
 @pytest.mark.asyncio
 async def test_write_keyword_refusal_still_works_and_is_not_cached():
     tool = MySQLQueryTool()
-    result = await tool._run(RunQueryInput(query="DROP TABLE orders"), None, None)
+    result = await tool.run(RunQueryInput(query="DROP TABLE orders"))
     assert "refused" in result.get_text_content()
     assert await _current_cache_size() == 0
+
+
+@pytest.mark.asyncio
+async def test_new_tool_instance_shares_the_module_level_cache_by_default():
+    """agents.py constructs MySQLQueryTool(**mysql_cfg) with no explicit
+    options= -- this must still pick up the shared schema cache automatically,
+    the way the module-level design always worked, without agents.py needing
+    to know about caching at all."""
+    from bee_bug_hunter.tools.mysql_tool import get_schema_cache
+
+    tool = MySQLQueryTool()
+    assert tool.cache is get_schema_cache()
