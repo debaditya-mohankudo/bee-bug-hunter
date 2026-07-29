@@ -141,10 +141,10 @@ class MySQLQueryTool(Tool[RunQueryInput, ToolRunOptions, StringToolOutput]):
         database: str | None = None,
         **kwargs,
     ) -> None:
-        # options={"cache": ...} may already be supplied by the caller (agents.py
-        # passes get_schema_cache()); default to the shared schema cache if not,
-        # so any ad-hoc MySQLQueryTool() construction still gets schema caching
-        # instead of silently running uncached.
+        # agents.py constructs MySQLQueryTool(**mysql_cfg) with no explicit
+        # options= at all, relying entirely on this default to wire up the
+        # shared schema cache. A caller MAY still pass its own options={"cache":
+        # ...} (e.g. tests) to override it -- setdefault leaves that untouched.
         kwargs.setdefault("options", {})
         kwargs["options"].setdefault("cache", get_schema_cache())
         super().__init__(**kwargs)
