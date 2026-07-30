@@ -135,27 +135,28 @@
       "name": "beeai-tool-native-cache-option"
     },
     "claude-cli-manager-fork-session-topology": {
-      "confidence": 0.93,
+      "confidence": 0.95,
       "contracts": [
         "_create() converts a {\"final_answer\": ...} reply on a required-tool turn into a final_answer tool call locally instead of failing and paying for a retry (the dominant missed_required_tool_call shape was well-formed final answers)",
         "missed_required_tool_call outcomes are logged with a raw_preview to distinguish 'never attempted' from 'attempted but unparseable'",
-        "_ensure_manager_session persists under roles[MANAGER_ROLE_NAME] -- the exact slot the manager's own later for_role() call looks up, so whichever role's for_role() runs first for a flow (workers are actually constructed before the manager in manager.py's build_supervisor) still bootstraps the one session the real manager later resumes"
+        "for_role() passes fork_from=None when role_key == MANAGER_ROLE_NAME (manager mints its own standalone session lazily on first real call) and fork_from=_ensure_root_session(...) for every other role"
       ],
       "created_at": "2026-07-30T09:40:55.491804+00:00",
-      "description": "ClaudeCLIChatModel shells to `claude -p --safe-mode --tools none` per reasoning step, reusing the caller's Claude Code OAuth login. Prompt caching comes from session topology: the Investigation Manager (MANAGER_ROLE_NAME, config.py) gets its own reserved session per flow, bootstrapped once (_ensure_manager_session) and never forked from anything. Every worker role forks its own session off the manager's session on first call (--resume <manager_session_id> --fork-session) and resumes its own fork thereafter, sending only messages appended since the previous call. Superseded (2026-07-30) a separate, generic role-agnostic 'root' session that every role including the manager forked from -- the manager's session is now itself the fork point, so workers inherit the manager's real, growing investigation context (mirroring HandoffTool's own BeeAI-memory propagation at the CLI-session-cache layer) rather than a content-free bootstrap. Not one shared session across roles: each role's system prompt carries a different tool schema, and mixing them would leave stale schemas in shared history.",
+      "description": "ClaudeCLIChatModel shells to `claude -p --safe-mode --tools none` per reasoning step, reusing the caller's Claude Code OAuth login. Prompt caching comes from session topology: the Investigation Manager (MANAGER_ROLE_NAME, config.py) gets its own reserved session per flow, minted directly on its own first call and never forked from anything (and never forked FROM by anything). Every worker instead forks its own session off a separate, generic, content-free root session (_ensure_root_session -- flow/container framing only, no tool schemas) on its first call, resuming its own fork thereafter. History (2026-07-30): an intermediate version had workers fork directly off the manager's own live session instead of a separate root, on the theory that the manager's real, growing investigation context would help workers more than generic framing. Verified live against a real flow that this backfires: the manager's system prompt carries all six handoff tool schemas every turn, and forking from its live session leaked those schemas into each worker's history, causing workers to hallucinate handoff-tool calls they were never given (e.g. the API Flow Runner worker attempting to call \"docker_log_capturer\"), wasting a retry each time and once cascading into a fatal CLI error (\"No deferred tool marker found\"). Reverted to a content-free root as the sole fork source for workers, while keeping the manager's session reserved/exclusive (never shared as a fork point for anyone). Not one shared session across roles generally: each role's system prompt carries a different tool schema, and mixing them leaves stale schemas in shared history -- exactly the failure mode this design exists to prevent.",
       "evidence": [
-        "bee_bug_hunter/claude_cli_llm.py:12-33",
-        "bee_bug_hunter/claude_cli_llm.py:143-172",
-        "bee_bug_hunter/claude_cli_llm.py:191-225",
+        "bee_bug_hunter/claude_cli_llm.py:12-34",
+        "bee_bug_hunter/claude_cli_llm.py:141-183",
+        "bee_bug_hunter/claude_cli_llm.py:200-245",
         "bee_bug_hunter/config.py:MANAGER_ROLE_NAME"
       ],
       "invariants": [
         "Per-(flow, role) singleton instances (_instances + for_role()) are what make clone()-returns-self safe -- HandoffTool clones the agent's llm on every delegation, which would otherwise cold-start a session per delegation",
         "A role's session_id is persisted to disk (.claude_cli_sessions.json) the moment the CLI assigns it, so restarts resume rather than orphan sessions",
         "A sessionless subprocess per call has no prefix for Anthropic's prompt cache to hit -- the pre-session design was cold every call",
-        "manager.py must pass role=MANAGER_ROLE_NAME (not a literal string) to get_chat_model() for its own ChatModel, or the manager's session never resolves to the same slot _ensure_manager_session bootstraps"
+        "The manager's own session must never become a fork source for any other role -- its system prompt's tool schema leaking into worker history is a confirmed, reproduced failure mode, not a theoretical risk",
+        "manager.py must pass role=MANAGER_ROLE_NAME (not a literal string) to get_chat_model() for its own ChatModel, or for_role()'s role_key == MANAGER_ROLE_NAME check silently fails and the manager gets treated as a worker (forking from root unnecessarily, though not unsafely)"
       ],
-      "last_validated": "2026-07-30T09:40:55.491804+00:00",
+      "last_validated": "2026-07-30T10:04:39.294518+00:00",
       "module": "bee_bug_hunter/claude_cli_llm.py",
       "name": "claude-cli-manager-fork-session-topology"
     },
