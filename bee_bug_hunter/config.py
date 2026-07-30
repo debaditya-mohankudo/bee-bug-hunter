@@ -38,6 +38,17 @@ DEFAULT_CLAUDE_CLI_MODEL = "sonnet"
 # or "kimi-k2.7-code" does.
 DEFAULT_COPILOT_CLI_MODEL = "auto"
 
+# Threshold, in estimated tokens, at which ThresholdSummarizingMiddleware
+# (summarizing_middleware.py) collapses an agent's live memory to a single
+# summary message. Matches DEFAULT_OLLAMA_NUM_CTX (16384) rather than
+# assuming a large-context provider: at the default local-dev provider, a
+# normal investigation (multiple DB Query Agent round-trips, a specialist
+# escalation, a batch run's accumulated known_issue_note context) can
+# plausibly approach that window well before some hypothetical "rare long
+# run" -- see task f11ba783's grooming notes. Overridable per deployment via
+# SUMMARIZE_AT_TOKENS.
+DEFAULT_SUMMARIZE_AT_TOKENS = 16000
+
 DEFAULT_LOG_FILE = "logs/bee_bug_hunter.jsonl"
 DEFAULT_LOG_LEVEL = "INFO"
 

@@ -12,6 +12,7 @@ from beeai_framework.tools import StringToolOutput
 
 from bee_bug_hunter.delegation_capture import CapturingHandoffTool
 from bee_bug_hunter.manager import build_supervisor
+from bee_bug_hunter.summarizing_middleware import ThresholdSummarizingMiddleware
 
 
 def _empty_state() -> RequirementAgentRunState:
@@ -34,6 +35,16 @@ def supervisor():
 def test_supervisor_has_no_domain_tools_only_handoffs(supervisor):
     assert len(supervisor._tools) == 6
     assert all(isinstance(t, CapturingHandoffTool) for t in supervisor._tools)
+
+
+def test_supervisor_uses_threshold_summarizing_middleware(supervisor):
+    """The manager's loop -- unlike each worker's -- accumulates across a whole
+    investigation's handoff history, so it's the one that needs per-iteration
+    logging and threshold-triggered collapse rather than plain LoggingMemory."""
+    assert len(supervisor.middlewares) == 1
+    middleware = supervisor.middlewares[0]
+    assert isinstance(middleware, ThresholdSummarizingMiddleware)
+    assert middleware.agent_name == "Investigation Manager"
 
 
 def test_supervisor_handoff_names(supervisor):

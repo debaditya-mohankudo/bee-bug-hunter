@@ -406,7 +406,7 @@
         "Emits memory_message_added / memory_message_removed / memory_reset events with role, 200-char preview, and memory_size"
       ],
       "created_at": "2026-07-14T15:23:50.324927+00:00",
-      "description": "LoggingMemory (UnconstrainedMemory subclass) logs every message added/removed/reset in an agent's context into the same JSONL stream, tagged with the agent name and ambient run_id — otherwise 'what actually went into an agent's context' is only inspectable with a debugger. Previews render tool calls/results by content type because message.text is empty for them.",
+      "description": "LoggingMemory (UnconstrainedMemory subclass) logs every message added/removed/reset in an agent's context into the same JSONL stream, tagged with the agent name and ambient run_id — otherwise 'what actually went into an agent's context' is only inspectable with a debugger. Previews render tool calls/results by content type because message.text is empty for them. As of 2026-07-30, only the six workers (agents.py) use this — the Investigation Manager (manager.py) uses threshold-summarizing-middleware instead, since a BaseMemory subclass passed as memory= is only synced from the runner's live memory once, at the very end of a run, so it can't see per-iteration mutations the way the manager's loop (which spans a whole investigation) needed.",
       "evidence": [
         "bee_bug_hunter/logging_memory.py:45-81"
       ],
@@ -414,13 +414,9 @@
         "add_many() funnels through add() in BaseMemory, so overriding add/delete/reset covers every mutation path",
         "clone() must return a LoggingMemory preserving agent_name (HandoffTool clones worker memory on delegation)"
       ],
-      "last_validated": "2026-07-14T17:06:47.806723+00:00",
+      "last_validated": "2026-07-30T08:44:32.791412+00:00",
       "module": "bee_bug_hunter/logging_memory.py",
-      "name": "logging-memory-context-visibility",
-      "related": [
-        "logging-jsonl-run-id-contextvar",
-        "agents-six-worker-roster"
-      ]
+      "name": "logging-memory-context-visibility"
     },
     "manager-conditional-ordering": {
       "confidence": 0.97,
@@ -683,6 +679,27 @@
         "orchestrator-flow-run-lifecycle",
         "config-shared-constants"
       ]
+    },
+    "threshold-summarizing-middleware": {
+      "confidence": 0.9,
+      "contracts": [
+        "Attach via RequirementAgent(..., middlewares=[ThresholdSummarizingMiddleware(agent_name=..., summarizer_llm=..., summarize_at_tokens=...)]) -- not memory=",
+        "manager.py:88 wires DEFAULT_SUMMARIZE_AT_TOKENS (config.py, default 16000, overridable via SUMMARIZE_AT_TOKENS env var) into this constructor"
+      ],
+      "created_at": "2026-07-30T08:44:25.153475+00:00",
+      "description": "ThresholdSummarizingMiddleware(RunMiddlewareProtocol) replaces LoggingMemory for the Investigation Manager only. An agent's memory= constructor param is synced from the runner's live UnconstrainedMemory just once, at the very end of a run (agent.py:190-205) -- so a BaseMemory subclass passed as memory= can never see per-iteration mutations or collapse memory mid-run. This middleware instead binds to the runner's per-iteration 'success' event (RequirementAgentSuccessEvent, _runner.py:262-271), whose event.state.memory IS the runner's live UnconstrainedMemory by reference (_runner.py:67-68). Each iteration it logs newly-added messages (memory_message_added JSONL, same shape LoggingMemory used) and tracks a running token estimate (tiktoken cl100k_base, char/4 fallback); once summarize_at_tokens is crossed, it calls a dedicated summarizer_llm and collapses the live memory in place via memory.reset() (sync) + await memory.add_many([SystemMessage(summary)]) (async) -- visible to every subsequent iteration.",
+      "evidence": [
+        "bee_bug_hunter/summarizing_middleware.py:90-146",
+        "bee_bug_hunter/manager.py:88-95"
+      ],
+      "invariants": [
+        "The runner also emits RunContext's own generic lifecycle events under the SAME event name ('success', via RunContextSuccessEvent) on the same ctx.emitter -- the handler must isinstance()-check for RequirementAgentSuccessEvent specifically, or it will receive the wrong payload type",
+        "UnconstrainedMemory.reset() is sync (no await); add()/add_many()/delete() are async -- do not await reset()",
+        "Scoped to the manager only, deliberately: workers (agents.py) keep plain LoggingMemory since they're reset+reseeded per handoff and their own loops are short -- only the manager's loop accumulates across a whole investigation's handoff history"
+      ],
+      "last_validated": "2026-07-30T08:44:25.153475+00:00",
+      "module": "bee_bug_hunter/summarizing_middleware.py",
+      "name": "threshold-summarizing-middleware"
     },
     "tool-capture-raw-json-via-emitter": {
       "confidence": 0.96,

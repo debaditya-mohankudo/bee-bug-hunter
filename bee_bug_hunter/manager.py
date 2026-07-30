@@ -4,14 +4,16 @@ old CrewAI Process.hierarchical crew. The manager decides sequencing and
 escalation itself; handoffs propagate the conversation so far to each worker
 (cross-delegation context comes free from HandoffTool's memory propagation,
 replacing CrewAI's Crew(memory=True) embedder setup)."""
+import os
+
 from beeai_framework.agents.requirement import RequirementAgent
 from beeai_framework.agents.requirement.requirements.conditional import ConditionalRequirement
 
 from bee_bug_hunter.agents import build_agents
-from bee_bug_hunter.config import DEFAULT_FLOW_KIND
+from bee_bug_hunter.config import DEFAULT_FLOW_KIND, DEFAULT_SUMMARIZE_AT_TOKENS
 from bee_bug_hunter.delegation_capture import CapturingHandoffTool
 from bee_bug_hunter.llm import get_chat_model
-from bee_bug_hunter.logging_memory import LoggingMemory
+from bee_bug_hunter.summarizing_middleware import ThresholdSummarizingMiddleware
 
 
 def build_supervisor(
@@ -85,7 +87,13 @@ def build_supervisor(
         ),
         tools=list(handoffs.values()),
         requirements=requirements,
-        memory=LoggingMemory(agent_name="Investigation Manager"),
+        middlewares=[
+            ThresholdSummarizingMiddleware(
+                agent_name="Investigation Manager",
+                summarizer_llm=get_chat_model(role="Memory Summarizer", flow_name=flow_name, containers=containers),
+                summarize_at_tokens=int(os.getenv("SUMMARIZE_AT_TOKENS", DEFAULT_SUMMARIZE_AT_TOKENS)),
+            )
+        ],
     )
 
     if flow_kind == "api":
