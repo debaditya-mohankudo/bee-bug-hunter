@@ -9,21 +9,29 @@ BeeAI's own agent loop executes the tool and feeds the result back. Unlike the
 CrewAI port this was adapted from, no hand-rolled tool loop is needed here — BeeAI
 drives the loop; this backend only translates one reasoning step at a time.
 
-Session-based prompt caching, root+fork topology: one shared "root" `claude -p`
-session per flow investigation holds only generic, role-agnostic framing (flow
-name, containers -- no tool schemas). Each role (worker or manager) forks its own
-session off that root on its first call (`claude -p --resume <root_id>
---fork-session`), then reuses its own forked session (`--resume <its_id>`) on
-every later call, sending only the messages appended since the previous call.
+Session-based prompt caching, manager+fork topology: the Investigation Manager
+(MANAGER_ROLE_NAME, config.py) gets its own reserved `claude -p` session per
+flow investigation -- created once, never forked from anything, and resumed
+directly on every later manager turn. Every other role (each worker) forks its
+own session off the manager's session on its first call (`claude -p --resume
+<manager_session_id> --fork-session`), then reuses that fork (`--resume
+<its_id>`) on every later call, sending only the messages appended since the
+previous call.
 
 This is deliberately not one shared session across every role: each role's
 system prompt carries a *different* tool schema (_describe_tools(input.tools)),
 so mixing roles into one session would leave stale tool schemas from other roles
 sitting in the history, confusing the model about which tools are actually
-callable this turn. Forking from a common root instead gives every role the same
-shared starting context (cache-friendly, and a true analogue of organs sharing
-one nervous system) while keeping each role's own tool-specific continuation
-isolated from the others (see ClaudeCLIChatModel.for_role()'s docstring).
+callable this turn. Forking from the manager's session instead gives every
+worker the manager's real, growing investigation context as a starting point
+(cache-friendly, and mirrors HandoffTool's own BeeAI-memory propagation --
+manager.py's docstring -- at the CLI-session-cache layer too) while keeping
+each role's own tool-specific continuation isolated from the others (see
+ClaudeCLIChatModel.for_role()'s docstring). Since the manager is always the one
+driving delegation, by the time any worker's session first forks (lazily, on
+that worker's first real call) the manager's session already holds at least
+its own first reasoning turn -- richer than a content-free bootstrap root ever
+was.
 
 A prior version called `claude -p` fresh every step with the entire conversation
 re-sent as one new prompt each time -- a brand-new sessionless subprocess every
@@ -56,7 +64,7 @@ from bee_bug_hunter.cli_tool_protocol import (
     extract_json_object as _extract_json_object,
     flatten_messages as _flatten_messages,
 )
-from bee_bug_hunter.config import DEFAULT_CLAUDE_CLI_SESSION_STORE
+from bee_bug_hunter.config import DEFAULT_CLAUDE_CLI_SESSION_STORE, MANAGER_ROLE_NAME
 from bee_bug_hunter.logging_config import get_logger, log
 
 logger = get_logger(__name__)
@@ -69,10 +77,11 @@ def _session_store_path() -> Path:
 
 
 def _load_persisted_sessions() -> dict[str, dict]:
-    """{flow_name: {"root": session_id, "roles": {role: session_id}}}, persisted to
-    disk so sessions survive process restarts (a crash, or a fresh --once
-    invocation) instead of living only in ClaudeCLIChatModel._instances, an
-    in-memory dict that resets every run."""
+    """{flow_name: {"roles": {role: session_id}}}, persisted to disk so sessions
+    survive process restarts (a crash, or a fresh --once invocation) instead of
+    living only in ClaudeCLIChatModel._instances, an in-memory dict that resets
+    every run. The manager's own reserved session lives under
+    roles[MANAGER_ROLE_NAME] like any other role -- see _ensure_manager_session()."""
     path = _session_store_path()
     if not path.exists():
         return {}
@@ -82,10 +91,6 @@ def _load_persisted_sessions() -> dict[str, dict]:
     except (OSError, json.JSONDecodeError) as e:
         log(logger, logging.WARNING, "claude_cli_session_store_read_failed", path=str(path), error=str(e))
         return {}
-
-
-def _persist_root_session(flow_key: str, session_id: str) -> None:
-    _update_session_store(lambda sessions: sessions.setdefault(flow_key, {}).update(root=session_id))
 
 
 def _persist_role_session(flow_key: str, role_key: str, session_id: str) -> None:
@@ -108,7 +113,7 @@ def _update_session_store(mutate) -> None:
 
 def clear_persisted_sessions() -> None:
     """Wipes the on-disk session store (and any in-memory ClaudeCLIChatModel
-    instances) so every process invocation starts with fresh root+role
+    instances) so every process invocation starts with fresh manager+role
     sessions. A killed/crashed run leaves a persisted session whose CLI-side
     history can be ahead of the BeeAI-side RequirementAgentRunState (which is
     always in-memory and starts empty) -- e.g. the manager's session
@@ -124,50 +129,55 @@ def clear_persisted_sessions() -> None:
     ClaudeCLIChatModel._instances.clear()
 
 
-_ROOT_SESSION_PROMPT = (
-    "You are one of several specialized agents collaborating on an automated bug-hunting "
-    "investigation of the '{flow_name}' flow (containers: {containers}). You will each be given "
-    "your own specific role and task separately -- this message is only shared background context, "
-    "not a task. Acknowledge briefly."
+_MANAGER_SESSION_BOOTSTRAP_PROMPT = (
+    "You are the Investigation Manager, coordinating an automated bug-hunting investigation "
+    "of the '{flow_name}' flow (containers: {containers}). You will be given your specific "
+    "instructions separately -- this message is only shared background context, not a task. "
+    "Acknowledge briefly."
 )
 
 
-def _ensure_root_session(flow_key: str, flow_name: str, containers: str, model: str) -> str:
-    """Creates (once) the shared root session for a flow investigation -- a
-    generic, role-agnostic framing (no tool schemas) that every role forks its
-    own session from (see ClaudeCLIChatModel.for_role()). A raw standalone `claude
-    -p` call rather than a ChatModel instance, since it isn't itself a worker/
-    manager role and has no BeeAI-side conversation of its own."""
+def _ensure_manager_session(flow_key: str, flow_name: str, containers: str, model: str) -> str:
+    """Creates (once) the manager's reserved session for a flow investigation --
+    every worker role forks its own session from this one (see
+    ClaudeCLIChatModel.for_role()) instead of a separate, generic root. A raw
+    standalone `claude -p` call rather than a ChatModel instance, since whichever
+    role calls for_role() first for a flow (worker or manager -- construction
+    order doesn't matter, see for_role()) might not be the manager itself.
+    Idempotent: persisted under roles[MANAGER_ROLE_NAME], the exact slot the
+    manager's own later for_role() call looks up, so it resumes -- rather than
+    re-bootstrapping -- this same session once its real ChatModel is built."""
     persisted = _load_persisted_sessions()
-    existing = persisted.get(flow_key, {}).get("root")
+    existing = persisted.get(flow_key, {}).get("roles", {}).get(MANAGER_ROLE_NAME)
     if existing:
         return existing
 
     claude_path = shutil.which("claude")
     if not claude_path:
         raise RuntimeError("claude_cli provider: `claude` binary not found on PATH")
-    root_id = str(uuid.uuid4())
-    prompt = _ROOT_SESSION_PROMPT.format(flow_name=flow_name, containers=containers)
+    manager_session_id = str(uuid.uuid4())
+    prompt = _MANAGER_SESSION_BOOTSTRAP_PROMPT.format(flow_name=flow_name, containers=containers)
     proc = subprocess.run(
         [claude_path, "-p", "--safe-mode", "--output-format", "json", "--tools", "none",
-         "--model", model, "--session-id", root_id],
+         "--model", model, "--session-id", manager_session_id],
         input=prompt, capture_output=True, text=True, timeout=240,
     )
     if proc.returncode != 0:
-        raise RuntimeError(f"claude CLI exited {proc.returncode} creating root session: {proc.stderr.strip()}")
+        raise RuntimeError(f"claude CLI exited {proc.returncode} creating manager session: {proc.stderr.strip()}")
     data = json.loads(proc.stdout)
     if data.get("is_error"):
-        raise RuntimeError(f"claude CLI reported an error creating root session: {data.get('result')}")
+        raise RuntimeError(f"claude CLI reported an error creating manager session: {data.get('result')}")
 
-    _persist_root_session(flow_key, root_id)
-    log(logger, logging.INFO, "claude_cli_root_session_created", flow=flow_name, session_id=root_id)
-    return root_id
+    _persist_role_session(flow_key, MANAGER_ROLE_NAME, manager_session_id)
+    log(logger, logging.INFO, "claude_cli_manager_session_created", flow=flow_name, session_id=manager_session_id)
+    return manager_session_id
 
 class ClaudeCLIChatModel(ChatModel):
-    """Shells to `claude -p --safe-mode --tools none` per reasoning step. Each role
-    (worker or manager) forks its own persistent CLI session off a shared per-flow
-    root session on first use (see for_role()), then reuses that fork on every
-    later turn -- see the module docstring for the full root+fork rationale.
+    """Shells to `claude -p --safe-mode --tools none` per reasoning step. The
+    manager (MANAGER_ROLE_NAME) gets its own reserved session; every worker
+    forks its own persistent CLI session off the manager's session on first use
+    (see for_role()), then reuses that fork on every later turn -- see the
+    module docstring for the full manager+fork rationale.
 
     No API key needed — reuses the caller's Claude Code login. No native
     streaming; _create_stream just yields the full _create result once.
@@ -206,12 +216,20 @@ class ClaudeCLIChatModel(ChatModel):
         role_key = role or "default"
         cache_key = (flow_key, role_key)
         if cache_key not in cls._instances:
-            root_id = _ensure_root_session(flow_key, flow_name or flow_key, containers, model)
+            # Ensures the manager's reserved session exists (bootstrapping it if
+            # this happens to be the very first for_role() call of the flow, from
+            # any role -- see _ensure_manager_session()'s docstring). When
+            # role_key is itself MANAGER_ROLE_NAME, this call is what creates
+            # that session; existing_role_session below then finds it under the
+            # same roles[MANAGER_ROLE_NAME] slot and __init__ uses it directly
+            # (session_id wins over fork_from), so the manager resumes its own
+            # session rather than forking from itself.
+            manager_session_id = _ensure_manager_session(flow_key, flow_name or flow_key, containers, model)
             persisted = _load_persisted_sessions()
             existing_role_session = persisted.get(flow_key, {}).get("roles", {}).get(role_key)
             cls._instances[cache_key] = cls(
                 model=model, flow_key=flow_key, role_key=role_key,
-                session_id=existing_role_session, fork_from=root_id, **kwargs,
+                session_id=existing_role_session, fork_from=manager_session_id, **kwargs,
             )
         return cls._instances[cache_key]
 
@@ -297,7 +315,7 @@ class ClaudeCLIChatModel(ChatModel):
         raw, returned_session_id = await asyncio.to_thread(self._invoke_cli, system_prompt, prompt)
         elapsed_ms = round((time.monotonic() - started) * 1000, 1)
         if self._session_id is None:
-            # First call for this role was the fork-from-root; adopt and persist
+            # First call for this role was the fork-from-manager-session; adopt and persist
             # the session_id the CLI assigned to it so every later call (this
             # process and any future one) resumes it correctly.
             self._session_id = returned_session_id
@@ -372,8 +390,9 @@ class ClaudeCLIChatModel(ChatModel):
 
     def _invoke_cli(self, system_prompt: str, user_prompt: str) -> tuple[str, str]:
         """Returns (result_text, session_id). Three possible modes, checked in this
-        order: (1) first-ever call for this role -> fork off the shared root
-        (--resume <root> --fork-session), letting the CLI assign the new
+        order: (1) first-ever call for this (worker) role -> fork off the
+        manager's reserved session (--resume <manager_session_id>
+        --fork-session), letting the CLI assign the new
         session_id, which _create() then adopts and persists; (2) resuming a
         session already known (from this process or a persisted prior one)
         (--resume <id>); (3) no fork_from and no session_id -- only reachable via

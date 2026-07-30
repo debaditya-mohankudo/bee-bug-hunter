@@ -10,7 +10,7 @@ from beeai_framework.agents.requirement import RequirementAgent
 from beeai_framework.agents.requirement.requirements.conditional import ConditionalRequirement
 
 from bee_bug_hunter.agents import build_agents
-from bee_bug_hunter.config import DEFAULT_FLOW_KIND, DEFAULT_SUMMARIZE_AT_TOKENS
+from bee_bug_hunter.config import DEFAULT_FLOW_KIND, DEFAULT_SUMMARIZE_AT_TOKENS, MANAGER_ROLE_NAME
 from bee_bug_hunter.delegation_capture import CapturingHandoffTool
 from bee_bug_hunter.llm import get_chat_model
 from bee_bug_hunter.summarizing_middleware import ThresholdSummarizingMiddleware
@@ -71,7 +71,7 @@ def build_supervisor(
     ]
 
     supervisor = RequirementAgent(
-        llm=get_chat_model(role="Investigation Manager", flow_name=flow_name, containers=containers),
+        llm=get_chat_model(role=MANAGER_ROLE_NAME, flow_name=flow_name, containers=containers),
         name="Investigation Manager",
         description=(
             "Runs the flow, captures its logs and DB state, decides whether anything is wrong, and if so "
@@ -89,7 +89,7 @@ def build_supervisor(
         requirements=requirements,
         middlewares=[
             ThresholdSummarizingMiddleware(
-                agent_name="Investigation Manager",
+                agent_name=MANAGER_ROLE_NAME,
                 summarizer_llm=get_chat_model(role="Memory Summarizer", flow_name=flow_name, containers=containers),
                 summarize_at_tokens=int(os.getenv("SUMMARIZE_AT_TOKENS", DEFAULT_SUMMARIZE_AT_TOKENS)),
             )

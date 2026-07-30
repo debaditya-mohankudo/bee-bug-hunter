@@ -4,6 +4,15 @@ Import from here instead of re-declaring any of these locally.
 
 DEFAULT_MANIFEST = "bee_bug_hunter/manifest.yaml"
 
+# The exact role= string manager.py passes to llm.py:get_chat_model() for the
+# Investigation Manager's own ChatModel. claude_cli_llm.py's session-fork
+# topology special-cases this role (see ClaudeCLIChatModel.for_role()): the
+# manager gets its own reserved, never-forked session, and every other role
+# forks from it. A shared constant (rather than the literal string
+# independently duplicated in manager.py and claude_cli_llm.py) keeps the two
+# in sync.
+MANAGER_ROLE_NAME = "Investigation Manager"
+
 # manifest.yaml's `kind:` default -- both manager.build_supervisor's
 # flow_kind param and orchestrator.py's flow_cfg.get("kind", ...) read this.
 DEFAULT_FLOW_KIND = "ui"
