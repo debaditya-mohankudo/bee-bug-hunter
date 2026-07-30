@@ -151,27 +151,75 @@ def describe_tools(tools) -> str:
     return "\n".join(lines)
 
 
+def _render_message(m) -> tuple[str, str]:
+    """Returns (role, rendered_text) for one message -- the content-type-aware
+    rendering shared by flatten_messages (building the actual prompt) and
+    message_signature (deciding whether that same content was already sent)."""
+    role = getattr(m, "role", "user")
+    role = role.value if hasattr(role, "value") else str(role)
+    if role == "system":
+        return role, m.text
+    chunks = []
+    for c in m.content:
+        if isinstance(c, MessageToolResultContent):
+            chunks.append(f"Tool '{c.tool_name}' result:\n{c.result}")
+        elif isinstance(c, MessageToolCallContent):
+            chunks.append(f'{{"tool": "{c.tool_name}", "args": {c.args}}}')
+        else:
+            chunks.append(getattr(c, "text", ""))
+    return role, "\n".join(chunks)
+
+
 def flatten_messages(messages) -> tuple[str, str]:
     """Returns (system_prompt, conversation_prompt) — CLI backends here take one
     system string and one user string per invocation, so the given slice of
     message history is flattened into role-prefixed text. Callers pass only the
     messages new since the last invocation once a session is underway, not the
-    full history every time."""
+    full history every time (see select_new_messages)."""
     system_parts = []
     convo_parts = []
     for m in messages:
-        role = getattr(m, "role", "user")
-        role = role.value if hasattr(role, "value") else str(role)
+        role, text = _render_message(m)
         if role == "system":
-            system_parts.append(m.text)
-            continue
-        chunks = []
-        for c in m.content:
-            if isinstance(c, MessageToolResultContent):
-                chunks.append(f"Tool '{c.tool_name}' result:\n{c.result}")
-            elif isinstance(c, MessageToolCallContent):
-                chunks.append(f'{{"tool": "{c.tool_name}", "args": {c.args}}}')
-            else:
-                chunks.append(getattr(c, "text", ""))
-        convo_parts.append(f"{role.upper()}: " + "\n".join(chunks))
+            system_parts.append(text)
+        else:
+            convo_parts.append(f"{role.upper()}: {text}")
     return "\n\n".join(system_parts), "\n\n".join(convo_parts)
+
+
+def message_signature(m) -> str:
+    """Content-based identity for a message (role + its rendered text) -- used
+    by select_new_messages to dedupe which BeeAI messages have already been
+    sent to a CLI session, instead of a position-based cursor."""
+    role, text = _render_message(m)
+    return f"{role}:{text}"
+
+
+def select_new_messages(messages, already_sent: set[str]) -> list:
+    """Returns the subset of `messages` whose content signature isn't already in
+    `already_sent`. Pure/non-mutating -- callers own committing signatures to
+    `already_sent` themselves (only after the CLI call those messages were
+    flattened into actually succeeds; see claude_cli_llm.py/copilot_cli_llm.py's
+    _create(), which mirrors the old count-cursor's same success-only-commit
+    timing so a failed call doesn't wrongly mark its messages as delivered).
+
+    Content-signature dedup instead of a `messages[sent_count:]` position
+    cursor: HandoffTool resets and reseeds a worker's BeeAI memory on every
+    delegation (see manager.py's docstring on cross-delegation memory
+    propagation), so a worker's `input.messages` on a repeat delegation to the
+    same role is a fresh, differently-sized list -- not a strict continuation
+    of what was sent on the role's prior delegation. A position cursor left
+    over from that prior delegation can end up slicing past the end of the new
+    (often shorter) list, silently sending an EMPTY prompt for what should be a
+    whole new task. Dedup by content signature doesn't care about list
+    position or length, only "have we sent this exact role+text combination
+    before in this CLI session" -- robust to the reset/reseed shrinking or
+    reordering the list.
+
+    Known limitation: two messages with genuinely identical role+text (e.g.
+    the same tool producing the same result text twice by coincidence)
+    collapse to one signature, so the second occurrence is treated as
+    already-sent and dropped. Accepted as far less harmful than the
+    position-based bug this replaces -- a dropped duplicate content-echo vs. a
+    silently empty prompt."""
+    return [m for m in messages if message_signature(m) not in already_sent]

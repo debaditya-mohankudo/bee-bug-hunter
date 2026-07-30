@@ -180,28 +180,26 @@
     "cli-text-bridge-protocol": {
       "confidence": 0.96,
       "contracts": [
-        "flatten_messages() returns (system_prompt, conversation_prompt); callers pass only messages new since the last invocation once a session is underway",
-        "Two 'required' instruction variants exist because BeeAI's 'required' usually still allows finishing via the final_answer tool — forbidding final_answer outright punished models for legitimately being done (the dominant missed-call failure mode was well-formed final_answer JSON)"
+        "flatten_messages() returns (system_prompt, conversation_prompt); callers pass only messages new since the last invocation once a session is underway -- selected via select_new_messages(), not a raw list slice",
+        "Two 'required' instruction variants exist because BeeAI's 'required' usually still allows finishing via the final_answer tool — forbidding final_answer outright punished models for legitimately being done (the dominant missed-call failure mode was well-formed final_answer JSON)",
+        "select_new_messages(messages, already_sent) is pure (does not mutate already_sent) -- callers commit signatures to already_sent themselves, and only after their CLI call actually succeeds (see claude_cli_llm.py/copilot_cli_llm.py's _create())"
       ],
       "created_at": "2026-07-14T15:23:50.330977+00:00",
-      "description": "The CLI-agnostic half of the hand-rolled tool-calling bridge shared by claude_cli_llm.py and copilot_cli_llm.py: tool schemas are described in prompt text, the model replies with {\"tool\": ..., \"args\": {...}} or {\"final_answer\": ...} JSON, and the backends translate that into native MessageToolCallContent so BeeAI's own loop executes tools. Holds the protocol/instruction constants, JSON extraction, tool description, and message flattening.",
+      "description": "The CLI-agnostic half of the hand-rolled tool-calling bridge shared by claude_cli_llm.py and copilot_cli_llm.py: tool schemas are described in prompt text, the model replies with {\"tool\": ..., \"args\": {...}} or {\"final_answer\": ...} JSON, and the backends translate that into native MessageToolCallContent so BeeAI's own loop executes tools. Holds the protocol/instruction constants, JSON extraction, tool description, message flattening, and (2026-07-30) content-signature message dedup.",
       "evidence": [
         "bee_bug_hunter/cli_tool_protocol.py:44-60",
         "bee_bug_hunter/cli_tool_protocol.py:63-138",
-        "bee_bug_hunter/cli_tool_protocol.py:154-177"
+        "bee_bug_hunter/cli_tool_protocol.py:154-225"
       ],
       "invariants": [
         "extract_json_object prefers protocol-shaped candidates (has 'tool' or 'final_answer') over 'first span that parses' — prose often quotes valid JSON of its own (e.g. HTTP error bodies)",
         "Balanced-brace scanning (string/escape aware) replaced the greedy first-{-to-last-} regex that silently blobbed responses containing quoted braces",
-        "Last resort is beeai_framework's own parse_broken_json repair, accepted only if protocol-shaped"
+        "Last resort is beeai_framework's own parse_broken_json repair, accepted only if protocol-shaped",
+        "select_new_messages dedupes by content signature (role + rendered text), not list position/length -- a `messages[sent_count:]` cursor breaks when HandoffTool resets+reseeds a worker's memory on a repeat delegation to the same role, since the reseeded list can be shorter than however many messages were sent on that role's prior delegation, silently producing an empty prompt. Known limitation: two messages with genuinely identical role+text collapse to one signature and the second is dropped -- accepted as far less harmful than the position-based bug it replaces."
       ],
-      "last_validated": "2026-07-14T17:06:47.813700+00:00",
+      "last_validated": "2026-07-30T10:29:21.936216+00:00",
       "module": "bee_bug_hunter/cli_tool_protocol.py",
-      "name": "cli-text-bridge-protocol",
-      "related": [
-        "claude-cli-root-fork-session-topology",
-        "copilot-cli-capability-gaps"
-      ]
+      "name": "cli-text-bridge-protocol"
     },
     "config-shared-constants": {
       "confidence": 0.96,

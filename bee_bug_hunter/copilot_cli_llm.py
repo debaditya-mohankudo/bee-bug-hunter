@@ -57,6 +57,8 @@ from bee_bug_hunter.cli_tool_protocol import (
     describe_tools as _describe_tools,
     extract_json_object as _extract_json_object,
     flatten_messages as _flatten_messages,
+    message_signature as _message_signature,
+    select_new_messages as _select_new_messages,
 )
 from bee_bug_hunter.config import DEFAULT_COPILOT_CLI_SESSION_STORE
 from bee_bug_hunter.logging_config import get_logger, log
@@ -166,7 +168,7 @@ class CopilotCLIChatModel(ChatModel):
         self._copilot_path = copilot_path
         self._flow_key = flow_key
         self._role_key = role_key
-        self._sent_message_count = 0
+        self._sent_message_signatures: set[str] = set()
         self._session_id = session_id
         self._session_started = session_id is not None
 
@@ -186,7 +188,13 @@ class CopilotCLIChatModel(ChatModel):
         return "copilot_cli"
 
     async def _create(self, input: ChatModelInput, run) -> ChatModelOutput:
-        new_messages = input.messages[self._sent_message_count:] if self._session_started else input.messages
+        # Content-signature dedup, not a position/count cursor -- see
+        # claude_cli_llm.py's identical block and
+        # cli_tool_protocol.select_new_messages's docstring for why (a repeat
+        # delegation to the same role, after HandoffTool resets+reseeds its
+        # memory, can hand this same instance a shorter input.messages than a
+        # count cursor would expect, silently sending an empty prompt).
+        new_messages = _select_new_messages(input.messages, self._sent_message_signatures)
         system_prompt, prompt = _flatten_messages(new_messages)
         if input.tools:
             system_prompt = (
@@ -216,7 +224,10 @@ class CopilotCLIChatModel(ChatModel):
             self._session_id = returned_session_id
             _persist_role_session(self._flow_key, self._role_key, self._session_id)
         self._session_started = True
-        self._sent_message_count = len(input.messages)
+        # Only commit as "sent" now that the CLI call actually succeeded --
+        # see claude_cli_llm.py's identical comment for why this can't happen
+        # any earlier.
+        self._sent_message_signatures.update(_message_signature(m) for m in new_messages)
         parsed = _extract_json_object(raw)
 
         # See claude_cli_llm.py's identical block for the full rationale: a

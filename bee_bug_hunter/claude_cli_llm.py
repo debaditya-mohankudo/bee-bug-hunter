@@ -64,6 +64,8 @@ from bee_bug_hunter.cli_tool_protocol import (
     describe_tools as _describe_tools,
     extract_json_object as _extract_json_object,
     flatten_messages as _flatten_messages,
+    message_signature as _message_signature,
+    select_new_messages as _select_new_messages,
 )
 from bee_bug_hunter.config import DEFAULT_CLAUDE_CLI_SESSION_STORE, MANAGER_ROLE_NAME
 from bee_bug_hunter.logging_config import get_logger, log
@@ -257,7 +259,7 @@ class ClaudeCLIChatModel(ChatModel):
         self._claude_path = claude_path
         self._flow_key = flow_key
         self._role_key = role_key
-        self._sent_message_count = 0
+        self._sent_message_signatures: set[str] = set()
         if session_id:
             # This role already forked its own session in a prior process run --
             # always resume it, never re-fork, so we never lose/orphan it.
@@ -284,7 +286,7 @@ class ClaudeCLIChatModel(ChatModel):
         # session across roles." Only correct because delegations are sequential
         # (allow_parallel_tool_calls is False for every provider, see llm.py) --
         # concurrent delegations to the same role would race on
-        # _sent_message_count/_session_started.
+        # _sent_message_signatures/_session_started.
         return self
 
     @property
@@ -299,7 +301,13 @@ class ClaudeCLIChatModel(ChatModel):
         # Only flatten what's new since the last call in this session -- the CLI
         # session already holds everything sent on prior turns, and re-sending the
         # full history both wastes tokens and defeats prompt-cache prefix matching.
-        new_messages = input.messages[self._sent_message_count:] if self._session_started else input.messages
+        # Content-signature dedup (not a position/count cursor): HandoffTool resets
+        # and reseeds a worker's BeeAI memory on every delegation, so a repeat
+        # delegation to the same role can hand this same ChatModel instance a
+        # shorter, differently-shaped input.messages than last time -- a position
+        # cursor would then slice past the end and silently send an empty prompt.
+        # See cli_tool_protocol.select_new_messages's docstring.
+        new_messages = _select_new_messages(input.messages, self._sent_message_signatures)
         system_prompt, prompt = _flatten_messages(new_messages)
         if input.tools:
             system_prompt = (
@@ -334,7 +342,12 @@ class ClaudeCLIChatModel(ChatModel):
             self._session_id = returned_session_id
             _persist_role_session(self._flow_key, self._role_key, self._session_id)
         self._session_started = True
-        self._sent_message_count = len(input.messages)
+        # Only commit these messages as "sent" now that the CLI call actually
+        # succeeded -- committing earlier (e.g. right after computing
+        # new_messages) would wrongly mark them delivered even if _invoke_cli
+        # raised, causing a retry to send an empty prompt instead of re-sending
+        # them.
+        self._sent_message_signatures.update(_message_signature(m) for m in new_messages)
         parsed = _extract_json_object(raw)
 
         # The model replied {"final_answer": ...} on a turn that demanded a tool

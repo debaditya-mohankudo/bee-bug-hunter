@@ -13,10 +13,13 @@ call "docker_log_capturer"), each one wasting a retry and once cascading into
 a fatal CLI error. These tests guard the corrected separation: the manager's
 own session must never be used as anything's fork source.
 """
+import asyncio
 import json
 from unittest.mock import MagicMock, patch
 
 import pytest
+from beeai_framework.backend.message import AssistantMessage, UserMessage
+from beeai_framework.backend.types import ChatModelInput
 
 from bee_bug_hunter.claude_cli_llm import (
     ClaudeCLIChatModel,
@@ -145,4 +148,65 @@ def test_clear_persisted_sessions_wipes_root_and_worker_sessions(mock_which):
     clear_persisted_sessions()
 
     assert _load_persisted_sessions() == {}
+
+
+def _fake_cli_call_proc(session_id: str, result: str = "ack"):
+    proc = MagicMock()
+    proc.returncode = 0
+    proc.stdout = json.dumps({"result": result, "session_id": session_id, "is_error": False})
+    proc.stderr = ""
+    return proc
+
+
+class TestMessageDedupAcrossRepeatDelegations:
+    """A worker role can be delegated to more than once in one investigation
+    (e.g. DB Query Agent, run multiple times for several queries). Each
+    delegation, HandoffTool resets and reseeds that worker's BeeAI memory --
+    the reseeded input.messages on delegation 2 is unrelated in length to
+    whatever was sent to the CLI on delegation 1, since it reflects the
+    manager's conversation *at that later point* rather than continuing where
+    delegation 1's own internal reasoning left off. The old
+    `messages[sent_count:]` position cursor broke on this: if delegation 2's
+    reseeded list happened to be shorter than delegation 1's final message
+    count, the slice went out of range and silently sent an empty prompt.
+    Content-signature dedup (cli_tool_protocol.select_new_messages) fixes
+    this -- these tests reproduce the exact shape of the bug directly through
+    _create(), not just the pure helper function in isolation."""
+
+    @patch("bee_bug_hunter.claude_cli_llm.shutil.which", return_value="/usr/bin/claude")
+    def test_shorter_reseeded_message_list_still_sends_a_nonempty_prompt(self, mock_which):
+        model = ClaudeCLIChatModel(model="sonnet", flow_key="demo", role_key="DB Query Agent")
+
+        # Delegation 1: a long-ish internal reasoning trace accumulates.
+        delegation_1_messages = [
+            UserMessage("original manager instructions"),
+            UserMessage("run this query"),
+            AssistantMessage("tool call 1"),
+            AssistantMessage("tool call 2"),
+            AssistantMessage("final answer 1"),
+        ]
+        with patch(
+            "bee_bug_hunter.claude_cli_llm.subprocess.run", return_value=_fake_cli_call_proc("sess-1"),
+        ):
+            asyncio.run(model._create(ChatModelInput(messages=delegation_1_messages, tools=[]), run=None))
+
+        assert len(model._sent_message_signatures) == 5
+
+        # Delegation 2: HandoffTool reset+reseeded this worker's memory to a
+        # SHORTER list reflecting the manager's state at this later point --
+        # same original instructions (already sent) plus one new task.
+        delegation_2_messages = [
+            UserMessage("original manager instructions"),
+            UserMessage("run a different query this time"),
+        ]
+        with patch(
+            "bee_bug_hunter.claude_cli_llm.subprocess.run", return_value=_fake_cli_call_proc("sess-1"),
+        ) as mock_run:
+            asyncio.run(model._create(ChatModelInput(messages=delegation_2_messages, tools=[]), run=None))
+
+        sent_prompt = mock_run.call_args.kwargs.get("input") or mock_run.call_args[1].get("input")
+        assert sent_prompt, "delegation 2's prompt must not be empty"
+        assert "run a different query this time" in sent_prompt
+        # The already-sent original instructions must NOT be resent verbatim.
+        assert sent_prompt.count("original manager instructions") == 0
     assert ClaudeCLIChatModel._instances == {}

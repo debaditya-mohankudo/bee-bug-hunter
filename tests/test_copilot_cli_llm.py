@@ -4,10 +4,13 @@ shared text-bridge protocol (tool-call JSON extraction, message flattening) is
 covered by claude_cli_llm's usage of the same cli_tool_protocol module and
 isn't re-tested here.
 """
+import asyncio
 import json
 from unittest.mock import MagicMock, patch
 
 import pytest
+from beeai_framework.backend.message import AssistantMessage, UserMessage
+from beeai_framework.backend.types import ChatModelInput
 
 from bee_bug_hunter.copilot_cli_llm import CopilotCLIChatModel, clear_persisted_sessions
 
@@ -134,7 +137,54 @@ def test_for_role_gives_distinct_instances_per_role_same_flow(mock_which):
 
 @patch("bee_bug_hunter.copilot_cli_llm.shutil.which", return_value="/usr/bin/copilot")
 def test_clone_returns_self(mock_which):
-    import asyncio
-
     model = CopilotCLIChatModel(model="claude-sonnet-4.5", flow_key="demo", role_key="Bug Analyst")
     assert asyncio.run(model.clone()) is model
+
+
+class TestMessageDedupAcrossRepeatDelegations:
+    """Mirrors claude_cli_llm.py's identical test class: a worker role can be
+    delegated to more than once in one investigation, and HandoffTool resets
+    +reseeds that worker's BeeAI memory on each delegation -- the reseeded
+    input.messages on a later delegation is unrelated in length to whatever
+    was sent to the CLI on an earlier one. The old `messages[sent_count:]`
+    position cursor could slice past the end of a shorter reseeded list and
+    silently send an empty prompt; content-signature dedup
+    (cli_tool_protocol.select_new_messages) fixes this for copilot_cli too."""
+
+    @patch("bee_bug_hunter.copilot_cli_llm.shutil.which", return_value="/usr/bin/copilot")
+    def test_shorter_reseeded_message_list_still_sends_a_nonempty_prompt(self, mock_which):
+        model = CopilotCLIChatModel(model="claude-sonnet-4.5", flow_key="demo", role_key="DB Query Agent")
+
+        delegation_1_messages = [
+            UserMessage("original manager instructions"),
+            UserMessage("run this query"),
+            AssistantMessage("tool call 1"),
+            AssistantMessage("tool call 2"),
+            AssistantMessage("final answer 1"),
+        ]
+        events_1 = [
+            {"type": "assistant.message", "data": {"content": "ack", "model": "claude-sonnet-4.5"}},
+            {"type": "result", "sessionId": "sess-1", "usage": {"premiumRequests": 0}},
+        ]
+        with patch("bee_bug_hunter.copilot_cli_llm.subprocess.run", return_value=_fake_proc(events_1)):
+            asyncio.run(model._create(ChatModelInput(messages=delegation_1_messages, tools=[]), run=None))
+
+        assert len(model._sent_message_signatures) == 5
+
+        delegation_2_messages = [
+            UserMessage("original manager instructions"),
+            UserMessage("run a different query this time"),
+        ]
+        events_2 = [
+            {"type": "assistant.message", "data": {"content": "ack", "model": "claude-sonnet-4.5"}},
+            {"type": "result", "sessionId": "sess-1", "usage": {"premiumRequests": 0}},
+        ]
+        with patch(
+            "bee_bug_hunter.copilot_cli_llm.subprocess.run", return_value=_fake_proc(events_2),
+        ) as mock_run:
+            asyncio.run(model._create(ChatModelInput(messages=delegation_2_messages, tools=[]), run=None))
+
+        cmd = mock_run.call_args[0][0]
+        sent_prompt = cmd[cmd.index("-p") + 1]  # combined system+user text follows -p
+        assert "run a different query this time" in sent_prompt
+        assert sent_prompt.count("original manager instructions") == 0

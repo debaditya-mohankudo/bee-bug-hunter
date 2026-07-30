@@ -18,6 +18,8 @@ from bee_bug_hunter.cli_tool_protocol import (
     extract_json_object,
     find_balanced_json_objects,
     flatten_messages,
+    message_signature,
+    select_new_messages,
 )
 
 
@@ -182,3 +184,64 @@ class TestFlattenMessages:
 
     def test_empty_message_list_returns_empty_strings(self):
         assert flatten_messages([]) == ("", "")
+
+
+class TestMessageSignature:
+    def test_same_role_and_text_produce_same_signature(self):
+        assert message_signature(UserMessage("hi")) == message_signature(UserMessage("hi"))
+
+    def test_different_text_produces_different_signature(self):
+        assert message_signature(UserMessage("hi")) != message_signature(UserMessage("bye"))
+
+    def test_different_role_same_text_produces_different_signature(self):
+        assert message_signature(UserMessage("same")) != message_signature(AssistantMessage("same"))
+
+    def test_tool_call_content_is_part_of_the_signature(self):
+        a = AssistantMessage([MessageToolCallContent(tool_name="run_query", args='{"x": 1}', id="1")])
+        b = AssistantMessage([MessageToolCallContent(tool_name="run_query", args='{"x": 2}', id="1")])
+        assert message_signature(a) != message_signature(b)
+
+
+class TestSelectNewMessages:
+    def test_all_messages_selected_when_already_sent_is_empty(self):
+        messages = [UserMessage("one"), AssistantMessage("two")]
+        assert select_new_messages(messages, already_sent=set()) == messages
+
+    def test_messages_matching_already_sent_are_excluded(self):
+        first = UserMessage("one")
+        second = AssistantMessage("two")
+        already_sent = {message_signature(first)}
+
+        result = select_new_messages([first, second], already_sent)
+
+        assert result == [second]
+
+    def test_does_not_mutate_already_sent(self):
+        """select_new_messages is pure -- committing signatures is the
+        caller's job, done only after the CLI call those messages were
+        flattened into actually succeeds (see claude_cli_llm.py's _create())."""
+        already_sent: set[str] = set()
+        select_new_messages([UserMessage("one")], already_sent)
+        assert already_sent == set()
+
+    def test_a_shorter_reseeded_list_still_yields_its_genuinely_new_messages(self):
+        """Mirrors HandoffTool resetting+reseeding a worker's memory on a repeat
+        delegation to the same role: the new input.messages list can be
+        unrelated in length to whatever was sent on the role's prior
+        delegation. A position/count cursor would slice past the end of a
+        shorter list and return nothing; content-signature dedup correctly
+        finds the new task message regardless of the list's new length."""
+        already_sent = {message_signature(m) for m in [
+            UserMessage("original manager instructions"),
+            AssistantMessage("first tool call"),
+            AssistantMessage("some other reply"),
+            AssistantMessage("yet another reply"),
+        ]}
+        # A much shorter reseeded list for delegation 2: same original
+        # instructions (already sent) plus one genuinely new task message.
+        reseeded = [UserMessage("original manager instructions"), UserMessage("new task for delegation 2")]
+
+        result = select_new_messages(reseeded, already_sent)
+
+        assert len(result) == 1
+        assert result[0].text == "new task for delegation 2"
