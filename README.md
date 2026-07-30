@@ -15,7 +15,9 @@ a port of `crew-bug-hunter` (CrewAI) with the same features:
   batch pass are surfaced as notes to later flows, but the manager independently
   re-verifies relevance rather than trusting a note at face value.
 - Switchable LLM providers via `LLM_PROVIDER` in `.env`: `ollama` (default, local, no API
-  key), `openai`, or `anthropic`.
+  key), `openai`, `anthropic`, `claude_cli` (shells to the `claude` CLI, reusing your
+  existing Claude Code login instead of an API key), or `copilot_cli` (shells to the
+  `copilot` CLI, reusing your existing GitHub Copilot login).
 - Structured JSONL logging with a per-run `run_id` correlation id; one markdown report per
   flow run in `reports/`.
 - A Textual TUI (`python -m bee_bug_hunter.tui`).
